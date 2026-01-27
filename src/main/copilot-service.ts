@@ -1,9 +1,65 @@
 import { CopilotClient, type CopilotSession, defineTool } from "@github/copilot-sdk";
+import { Notification } from "electron";
 import { loadConfig } from "./database.js";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 
 const execAsync = promisify(exec);
+
+// Reminder storage (in-memory for current session)
+interface Reminder {
+  id: string;
+  message: string;
+  triggerAt: Date;
+  timerId: NodeJS.Timeout;
+}
+
+const activeReminders: Map<string, Reminder> = new Map();
+
+function generateReminderId(): string {
+  return `reminder_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+}
+
+function showNotification(title: string, body: string): void {
+  const notification = new Notification({
+    title,
+    body,
+    sound: "default",
+  });
+  notification.show();
+}
+
+function scheduleReminder(message: string, delaySeconds: number): { id: string; triggerAt: Date } {
+  const id = generateReminderId();
+  const triggerAt = new Date(Date.now() + delaySeconds * 1000);
+
+  const timerId = setTimeout(() => {
+    showNotification("Reminder", message);
+    activeReminders.delete(id);
+  }, delaySeconds * 1000);
+
+  activeReminders.set(id, { id, message, triggerAt, timerId });
+
+  return { id, triggerAt };
+}
+
+function cancelReminder(id: string): boolean {
+  const reminder = activeReminders.get(id);
+  if (reminder) {
+    clearTimeout(reminder.timerId);
+    activeReminders.delete(id);
+    return true;
+  }
+  return false;
+}
+
+function listReminders(): Array<{ id: string; message: string; triggerAt: string }> {
+  return Array.from(activeReminders.values()).map((r) => ({
+    id: r.id,
+    message: r.message,
+    triggerAt: r.triggerAt.toISOString(),
+  }));
+}
 
 // Custom tools for system control
 const setVolumeTool = defineTool("set_volume", {
@@ -162,7 +218,90 @@ const startPomodoroTool = defineTool("start_pomodoro", {
   },
 });
 
-const systemTools = [setVolumeTool, getVolumeTool, muteTool, setBrightnessTool, runShellTool, openAppTool, startTimerTool, startCountdownTool, startPomodoroTool];
+// Reminder tools
+const setReminderTool = defineTool("set_reminder", {
+  description: "Set a reminder that will show a native macOS notification after the specified time. Use this when the user wants to be reminded about something.",
+  parameters: {
+    type: "object",
+    properties: {
+      message: {
+        type: "string",
+        description: "The reminder message to display in the notification",
+      },
+      delay_seconds: {
+        type: "number",
+        description: "Number of seconds from now until the reminder triggers. Examples: 60 for 1 minute, 300 for 5 minutes, 3600 for 1 hour",
+      },
+    },
+    required: ["message", "delay_seconds"],
+  },
+  handler: async ({ message, delay_seconds }: { message: string; delay_seconds: number }) => {
+    if (delay_seconds <= 0) {
+      return { success: false, error: "Delay must be positive" };
+    }
+    const { id, triggerAt } = scheduleReminder(message, delay_seconds);
+    const minutes = Math.floor(delay_seconds / 60);
+    const seconds = delay_seconds % 60;
+    const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+    return {
+      success: true,
+      id,
+      message: `Reminder set for ${timeStr} from now`,
+      triggerAt: triggerAt.toISOString(),
+    };
+  },
+});
+
+const listRemindersTool = defineTool("list_reminders", {
+  description: "List all active reminders that are scheduled.",
+  parameters: {
+    type: "object",
+    properties: {},
+  },
+  handler: async () => {
+    const reminders = listReminders();
+    return {
+      count: reminders.length,
+      reminders,
+    };
+  },
+});
+
+const cancelReminderTool = defineTool("cancel_reminder", {
+  description: "Cancel a scheduled reminder by its ID.",
+  parameters: {
+    type: "object",
+    properties: {
+      id: {
+        type: "string",
+        description: "The ID of the reminder to cancel",
+      },
+    },
+    required: ["id"],
+  },
+  handler: async ({ id }: { id: string }) => {
+    const cancelled = cancelReminder(id);
+    return {
+      success: cancelled,
+      message: cancelled ? "Reminder cancelled" : "Reminder not found",
+    };
+  },
+});
+
+const systemTools = [
+  setVolumeTool,
+  getVolumeTool,
+  muteTool,
+  setBrightnessTool,
+  runShellTool,
+  openAppTool,
+  startTimerTool,
+  startCountdownTool,
+  startPomodoroTool,
+  setReminderTool,
+  listRemindersTool,
+  cancelReminderTool,
+];
 
 export interface ToolEvent {
   type: "start" | "complete";
