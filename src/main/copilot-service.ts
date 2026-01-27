@@ -288,6 +288,207 @@ const cancelReminderTool = defineTool("cancel_reminder", {
   },
 });
 
+// World clock tool
+const showWorldClockTool = defineTool("show_world_clock", {
+  description: "Show an interactive world clock widget displaying current times in multiple cities/timezones. The widget updates in real-time.",
+  parameters: {
+    type: "object",
+    properties: {
+      cities: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "City name to display (e.g., 'New York', 'London', 'Tokyo')" },
+            timezone: { type: "string", description: "IANA timezone identifier (e.g., 'America/New_York', 'Europe/London', 'Asia/Tokyo')" },
+          },
+          required: ["name", "timezone"],
+        },
+        description: "List of cities with their timezones to display. If not provided, shows common defaults.",
+      },
+    },
+  },
+  handler: async ({ cities }: { cities?: Array<{ name: string; timezone: string }> }) => {
+    const defaultCities = [
+      { name: "Local", timezone: Intl.DateTimeFormat().resolvedOptions().timeZone },
+      { name: "New York", timezone: "America/New_York" },
+      { name: "London", timezone: "Europe/London" },
+      { name: "Tokyo", timezone: "Asia/Tokyo" },
+    ];
+    return {
+      widget: "worldclock",
+      cities: cities || defaultCities,
+      message: "Showing world clock",
+    };
+  },
+});
+
+// Get current time in a timezone
+const getTimeTool = defineTool("get_time", {
+  description: "Get the current time in a specific timezone or city.",
+  parameters: {
+    type: "object",
+    properties: {
+      timezone: {
+        type: "string",
+        description: "IANA timezone identifier (e.g., 'America/New_York', 'Europe/London', 'Asia/Tokyo', 'America/Los_Angeles'). Use 'local' for local time.",
+      },
+    },
+    required: ["timezone"],
+  },
+  handler: async ({ timezone }: { timezone: string }) => {
+    const tz = timezone === "local" ? Intl.DateTimeFormat().resolvedOptions().timeZone : timezone;
+    const now = new Date();
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+    return {
+      timezone: tz,
+      formatted: formatter.format(now),
+      iso: now.toISOString(),
+    };
+  },
+});
+
+// Unit conversion data
+const unitConversions: Record<string, Record<string, number>> = {
+  length: {
+    meters: 1,
+    kilometers: 0.001,
+    centimeters: 100,
+    millimeters: 1000,
+    miles: 0.000621371,
+    yards: 1.09361,
+    feet: 3.28084,
+    inches: 39.3701,
+  },
+  weight: {
+    kilograms: 1,
+    grams: 1000,
+    milligrams: 1000000,
+    pounds: 2.20462,
+    ounces: 35.274,
+    stones: 0.157473,
+  },
+  temperature: {
+    celsius: 1, // special handling needed
+    fahrenheit: 1,
+    kelvin: 1,
+  },
+  volume: {
+    liters: 1,
+    milliliters: 1000,
+    gallons: 0.264172,
+    quarts: 1.05669,
+    pints: 2.11338,
+    cups: 4.22675,
+    fluid_ounces: 33.814,
+  },
+  area: {
+    square_meters: 1,
+    square_kilometers: 0.000001,
+    square_feet: 10.7639,
+    square_yards: 1.19599,
+    acres: 0.000247105,
+    hectares: 0.0001,
+  },
+  speed: {
+    meters_per_second: 1,
+    kilometers_per_hour: 3.6,
+    miles_per_hour: 2.23694,
+    knots: 1.94384,
+  },
+};
+
+function convertUnit(value: number, fromUnit: string, toUnit: string, category: string): number | null {
+  // Special handling for temperature
+  if (category === "temperature") {
+    let celsius: number;
+    // Convert to Celsius first
+    if (fromUnit === "celsius") celsius = value;
+    else if (fromUnit === "fahrenheit") celsius = (value - 32) * 5 / 9;
+    else if (fromUnit === "kelvin") celsius = value - 273.15;
+    else return null;
+
+    // Convert from Celsius to target
+    if (toUnit === "celsius") return celsius;
+    if (toUnit === "fahrenheit") return celsius * 9 / 5 + 32;
+    if (toUnit === "kelvin") return celsius + 273.15;
+    return null;
+  }
+
+  const categoryData = unitConversions[category];
+  if (!categoryData || !categoryData[fromUnit] || !categoryData[toUnit]) {
+    return null;
+  }
+
+  // Convert to base unit, then to target unit
+  const baseValue = value / categoryData[fromUnit];
+  return baseValue * categoryData[toUnit];
+}
+
+// Unit converter tools
+const showUnitConverterTool = defineTool("show_unit_converter", {
+  description: "ALWAYS use this tool when the user asks for a unit converter, temperature converter, length converter, weight converter, or wants to convert between units. Shows an interactive widget in the chat. Do NOT generate HTML code - use this tool instead.",
+  parameters: {
+    type: "object",
+    properties: {
+      category: {
+        type: "string",
+        enum: ["length", "weight", "temperature", "volume", "area", "speed"],
+        description: "Category of units to convert. Use 'temperature' for temperature conversions, 'length' for distance/length, 'weight' for mass, etc.",
+      },
+    },
+  },
+  handler: async ({ category }: { category?: string }) => {
+    return {
+      widget: "unitconverter",
+      category: category || "length",
+      message: `Showing ${category || "length"} unit converter`,
+    };
+  },
+});
+
+const convertUnitTool = defineTool("convert_unit", {
+  description: "Convert a specific value from one unit to another and return the result. Use this when the user asks 'what is X in Y' or 'convert X to Y'. For interactive converter widget, use show_unit_converter instead.",
+  parameters: {
+    type: "object",
+    properties: {
+      value: { type: "number", description: "The value to convert" },
+      from_unit: { type: "string", description: "Source unit (e.g., 'meters', 'pounds', 'celsius')" },
+      to_unit: { type: "string", description: "Target unit (e.g., 'feet', 'kilograms', 'fahrenheit')" },
+      category: {
+        type: "string",
+        enum: ["length", "weight", "temperature", "volume", "area", "speed"],
+        description: "Category of the units",
+      },
+    },
+    required: ["value", "from_unit", "to_unit", "category"],
+  },
+  handler: async ({ value, from_unit, to_unit, category }: { value: number; from_unit: string; to_unit: string; category: string }) => {
+    const result = convertUnit(value, from_unit, to_unit, category);
+    if (result === null) {
+      return { success: false, error: "Invalid unit conversion" };
+    }
+    return {
+      success: true,
+      value,
+      from_unit,
+      to_unit,
+      result: Math.round(result * 1000000) / 1000000, // Round to 6 decimal places
+      formatted: `${value} ${from_unit} = ${Math.round(result * 1000000) / 1000000} ${to_unit}`,
+    };
+  },
+});
+
 const systemTools = [
   setVolumeTool,
   getVolumeTool,
@@ -301,6 +502,10 @@ const systemTools = [
   setReminderTool,
   listRemindersTool,
   cancelReminderTool,
+  showWorldClockTool,
+  getTimeTool,
+  showUnitConverterTool,
+  convertUnitTool,
 ];
 
 export interface ToolEvent {
@@ -310,9 +515,11 @@ export interface ToolEvent {
 }
 
 export interface WidgetEvent {
-  type: "timer" | "countdown" | "pomodoro";
+  type: "timer" | "countdown" | "pomodoro" | "worldclock" | "unitconverter";
   duration?: number;
   label?: string;
+  cities?: Array<{ name: string; timezone: string }>;
+  category?: string;
 }
 
 export class CopilotService {
@@ -388,6 +595,8 @@ export class CopilotService {
                   type: result.widget,
                   duration: result.duration,
                   label: result.label,
+                  cities: result.cities,
+                  category: result.category,
                 });
               }
             } catch {

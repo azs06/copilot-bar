@@ -435,6 +435,125 @@
         cursor: not-allowed;
       }
 
+      /* Unit Converter Widget */
+      .converter-row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+        align-items: center;
+      }
+
+      .converter-input {
+        flex: 1;
+        padding: 8px 10px;
+        border: 1px solid #333;
+        border-radius: 6px;
+        background: #1a1a1a;
+        color: #fff;
+        font-size: 14px;
+        font-family: "SF Mono", monospace;
+      }
+
+      .converter-input:focus {
+        outline: none;
+        border-color: #0066ff;
+      }
+
+      .converter-select {
+        padding: 8px 10px;
+        border: 1px solid #333;
+        border-radius: 6px;
+        background: #1a1a1a;
+        color: #fff;
+        font-size: 12px;
+        min-width: 100px;
+      }
+
+      .converter-select:focus {
+        outline: none;
+        border-color: #0066ff;
+      }
+
+      .converter-arrow {
+        color: #666;
+        font-size: 16px;
+      }
+
+      .converter-result {
+        font-size: 18px;
+        font-family: "SF Mono", monospace;
+        color: #0066ff;
+        text-align: center;
+        padding: 8px;
+        background: #1a1a1a;
+        border-radius: 6px;
+        margin-top: 8px;
+      }
+
+      .converter-tabs {
+        display: flex;
+        gap: 4px;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+      }
+
+      .converter-tab {
+        padding: 4px 8px;
+        border: none;
+        border-radius: 4px;
+        background: #333;
+        color: #888;
+        font-size: 10px;
+        cursor: pointer;
+        text-transform: uppercase;
+      }
+
+      .converter-tab:hover {
+        background: #444;
+        color: #fff;
+      }
+
+      .converter-tab.active {
+        background: #0066ff;
+        color: #fff;
+      }
+
+      /* World Clock Widget */
+      .worldclock-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .worldclock-city {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid #333;
+      }
+
+      .worldclock-city:last-child {
+        border-bottom: none;
+      }
+
+      .worldclock-city-name {
+        font-size: 12px;
+        color: #888;
+      }
+
+      .worldclock-city-time {
+        font-size: 18px;
+        font-family: "SF Mono", "Monaco", "Menlo", monospace;
+        color: #fff;
+      }
+
+      .worldclock-city-date {
+        font-size: 10px;
+        color: #666;
+        text-align: right;
+      }
+
       /* Settings Panel */
       .settings-overlay {
         position: fixed;
@@ -584,6 +703,7 @@
       <div class="header-actions">
         <button class="config-btn" id="clearBtn" title="Clear chat">🗑️</button>
         <button class="config-btn" id="configBtn" title="Settings">⚙️</button>
+        <button class="config-btn" id="quitBtn" title="Quit app">✕</button>
       </div>
     </div>
 
@@ -646,6 +766,7 @@
       let emptyState = document.getElementById("emptyState");
       const configBtn = document.getElementById("configBtn");
       const clearBtn = document.getElementById("clearBtn");
+      const quitBtn = document.getElementById("quitBtn");
       const modelBadge = document.getElementById("modelBadge");
 
       let isLoading = false;
@@ -857,6 +978,11 @@
         `;
         emptyState = document.getElementById("emptyState");
         input.focus();
+      });
+
+      // Quit app
+      quitBtn.addEventListener("click", () => {
+        ipcRenderer.invoke("quit-app");
       });
 
       // Listen for tool events from main process
@@ -1100,10 +1226,207 @@
       }
 
       // Listen for widget events from main process
+      // Unit Converter Widget
+      const unitData = {
+        length: {
+          units: ["meters", "kilometers", "centimeters", "millimeters", "miles", "yards", "feet", "inches"],
+          base: "meters",
+          factors: { meters: 1, kilometers: 0.001, centimeters: 100, millimeters: 1000, miles: 0.000621371, yards: 1.09361, feet: 3.28084, inches: 39.3701 }
+        },
+        weight: {
+          units: ["kilograms", "grams", "milligrams", "pounds", "ounces", "stones"],
+          base: "kilograms",
+          factors: { kilograms: 1, grams: 1000, milligrams: 1000000, pounds: 2.20462, ounces: 35.274, stones: 0.157473 }
+        },
+        temperature: {
+          units: ["celsius", "fahrenheit", "kelvin"],
+          base: "celsius",
+          factors: null // special handling
+        },
+        volume: {
+          units: ["liters", "milliliters", "gallons", "quarts", "pints", "cups", "fluid_ounces"],
+          base: "liters",
+          factors: { liters: 1, milliliters: 1000, gallons: 0.264172, quarts: 1.05669, pints: 2.11338, cups: 4.22675, fluid_ounces: 33.814 }
+        },
+        area: {
+          units: ["square_meters", "square_kilometers", "square_feet", "square_yards", "acres", "hectares"],
+          base: "square_meters",
+          factors: { square_meters: 1, square_kilometers: 0.000001, square_feet: 10.7639, square_yards: 1.19599, acres: 0.000247105, hectares: 0.0001 }
+        },
+        speed: {
+          units: ["meters_per_second", "kilometers_per_hour", "miles_per_hour", "knots"],
+          base: "meters_per_second",
+          factors: { meters_per_second: 1, kilometers_per_hour: 3.6, miles_per_hour: 2.23694, knots: 1.94384 }
+        }
+      };
+
+      function convertValue(value, fromUnit, toUnit, category) {
+        if (category === "temperature") {
+          let celsius;
+          if (fromUnit === "celsius") celsius = value;
+          else if (fromUnit === "fahrenheit") celsius = (value - 32) * 5 / 9;
+          else if (fromUnit === "kelvin") celsius = value - 273.15;
+          else return null;
+
+          if (toUnit === "celsius") return celsius;
+          if (toUnit === "fahrenheit") return celsius * 9 / 5 + 32;
+          if (toUnit === "kelvin") return celsius + 273.15;
+          return null;
+        }
+
+        const data = unitData[category];
+        if (!data || !data.factors) return null;
+        const baseValue = value / data.factors[fromUnit];
+        return baseValue * data.factors[toUnit];
+      }
+
+      function createUnitConverterWidget(initialCategory) {
+        let category = initialCategory || "length";
+
+        const widget = document.createElement("div");
+        widget.className = "widget";
+        widget.style.maxWidth = "340px";
+
+        function render() {
+          const data = unitData[category];
+          const units = data.units;
+
+          widget.innerHTML = `
+            <div class="widget-header">📐 Unit Converter</div>
+            <div class="converter-tabs">
+              ${Object.keys(unitData).map(cat =>
+                `<button class="converter-tab ${cat === category ? 'active' : ''}" data-cat="${cat}">${cat}</button>`
+              ).join('')}
+            </div>
+            <div class="converter-row">
+              <input type="number" class="converter-input" id="fromValue" value="1" />
+              <select class="converter-select" id="fromUnit">
+                ${units.map((u, i) => `<option value="${u}" ${i === 0 ? 'selected' : ''}>${u.replace(/_/g, ' ')}</option>`).join('')}
+              </select>
+            </div>
+            <div class="converter-arrow" style="text-align: center;">↓</div>
+            <div class="converter-row">
+              <input type="text" class="converter-input" id="toValue" readonly />
+              <select class="converter-select" id="toUnit">
+                ${units.map((u, i) => `<option value="${u}" ${i === 1 ? 'selected' : ''}>${u.replace(/_/g, ' ')}</option>`).join('')}
+              </select>
+            </div>
+          `;
+
+          const fromValue = widget.querySelector("#fromValue");
+          const fromUnit = widget.querySelector("#fromUnit");
+          const toValue = widget.querySelector("#toValue");
+          const toUnit = widget.querySelector("#toUnit");
+          const tabs = widget.querySelectorAll(".converter-tab");
+
+          function update() {
+            const val = parseFloat(fromValue.value) || 0;
+            const result = convertValue(val, fromUnit.value, toUnit.value, category);
+            toValue.value = result !== null ? (Math.round(result * 1000000) / 1000000).toString() : "Error";
+          }
+
+          fromValue.addEventListener("input", update);
+          fromUnit.addEventListener("change", update);
+          toUnit.addEventListener("change", update);
+
+          tabs.forEach(tab => {
+            tab.addEventListener("click", () => {
+              category = tab.dataset.cat;
+              render();
+            });
+          });
+
+          update();
+        }
+
+        render();
+        return widget;
+      }
+
+      // World Clock Widget
+      function createWorldClockWidget(cities) {
+        const widget = document.createElement("div");
+        widget.className = "widget";
+        widget.style.maxWidth = "320px";
+
+        const header = document.createElement("div");
+        header.className = "widget-header";
+        header.textContent = "🌍 World Clock";
+        widget.appendChild(header);
+
+        const list = document.createElement("div");
+        list.className = "worldclock-list";
+
+        function formatCityTime(timezone) {
+          const now = new Date();
+          const timeFormatter = new Intl.DateTimeFormat("en-US", {
+            timeZone: timezone,
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: true,
+          });
+          const dateFormatter = new Intl.DateTimeFormat("en-US", {
+            timeZone: timezone,
+            weekday: "short",
+            month: "short",
+            day: "numeric",
+          });
+          return {
+            time: timeFormatter.format(now),
+            date: dateFormatter.format(now),
+          };
+        }
+
+        function updateTimes() {
+          list.innerHTML = "";
+          cities.forEach((city) => {
+            const { time, date } = formatCityTime(city.timezone);
+            const cityEl = document.createElement("div");
+            cityEl.className = "worldclock-city";
+            cityEl.innerHTML = `
+              <div>
+                <div class="worldclock-city-name">${city.name}</div>
+                <div class="worldclock-city-date">${date}</div>
+              </div>
+              <div class="worldclock-city-time">${time}</div>
+            `;
+            list.appendChild(cityEl);
+          });
+        }
+
+        updateTimes();
+        widget.appendChild(list);
+
+        // Update every second
+        const intervalId = setInterval(updateTimes, 1000);
+
+        // Clean up when widget is removed
+        const observer = new MutationObserver((mutations) => {
+          mutations.forEach((mutation) => {
+            mutation.removedNodes.forEach((node) => {
+              if (node === widget || node.contains(widget)) {
+                clearInterval(intervalId);
+                observer.disconnect();
+              }
+            });
+          });
+        });
+        observer.observe(chatContainer, { childList: true, subtree: true });
+
+        return widget;
+      }
+
       ipcRenderer.on("render-widget", (event, data) => {
         if (emptyState && emptyState.parentNode) {
           emptyState.remove();
         }
+
+        // Widget is the response - clear loading state
+        hideTypingIndicator();
+        isLoading = false;
+        sendBtn.disabled = false;
+        sendBtn.textContent = "Send";
 
         let widget;
         switch (data.type) {
@@ -1115,6 +1438,12 @@
             break;
           case "pomodoro":
             widget = createPomodoroWidget();
+            break;
+          case "worldclock":
+            widget = createWorldClockWidget(data.cities || []);
+            break;
+          case "unitconverter":
+            widget = createUnitConverterWidget(data.category);
             break;
         }
 

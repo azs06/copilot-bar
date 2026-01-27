@@ -110,6 +110,10 @@ app.whenReady().then(async () => {
     return getConfig(key);
   });
 
+  ipcMain.handle("quit-app", () => {
+    app.quit();
+  });
+
   const icon = createIcon();
 
   const mb = menubar({
