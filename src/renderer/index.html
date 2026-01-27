@@ -93,7 +93,6 @@
         max-width: 85%;
         font-size: 13px;
         line-height: 1.5;
-        white-space: pre-wrap;
         word-wrap: break-word;
       }
 
@@ -102,6 +101,7 @@
         color: white;
         align-self: flex-end;
         border-bottom-right-radius: 4px;
+        white-space: pre-wrap;
       }
 
       .message.assistant {
@@ -110,6 +110,111 @@
         align-self: flex-start;
         border-bottom-left-radius: 4px;
       }
+
+      /* Markdown styles for assistant messages */
+      .message.assistant p {
+        margin: 0 0 8px 0;
+      }
+
+      .message.assistant p:last-child {
+        margin-bottom: 0;
+      }
+
+      .message.assistant code {
+        background: #1a1a1a;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: "SF Mono", "Monaco", "Menlo", monospace;
+        font-size: 12px;
+      }
+
+      .message.assistant pre {
+        background: #1a1a1a;
+        padding: 12px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 8px 0;
+      }
+
+      .message.assistant pre code {
+        background: none;
+        padding: 0;
+        font-size: 11px;
+        line-height: 1.4;
+      }
+
+      .message.assistant ul,
+      .message.assistant ol {
+        margin: 8px 0;
+        padding-left: 20px;
+      }
+
+      .message.assistant li {
+        margin: 4px 0;
+      }
+
+      .message.assistant h1,
+      .message.assistant h2,
+      .message.assistant h3 {
+        margin: 12px 0 8px 0;
+        color: #fff;
+      }
+
+      .message.assistant h1 { font-size: 16px; }
+      .message.assistant h2 { font-size: 14px; }
+      .message.assistant h3 { font-size: 13px; }
+
+      .message.assistant blockquote {
+        border-left: 3px solid #444;
+        padding-left: 12px;
+        margin: 8px 0;
+        color: #aaa;
+      }
+
+      .message.assistant a {
+        color: #4da6ff;
+        text-decoration: none;
+      }
+
+      .message.assistant a:hover {
+        text-decoration: underline;
+      }
+
+      .message.assistant strong {
+        color: #fff;
+      }
+
+      .message.assistant table {
+        border-collapse: collapse;
+        margin: 8px 0;
+        font-size: 12px;
+      }
+
+      .message.assistant th,
+      .message.assistant td {
+        border: 1px solid #444;
+        padding: 6px 10px;
+      }
+
+      .message.assistant th {
+        background: #333;
+      }
+
+      /* Syntax highlighting (GitHub dark theme) */
+      .hljs-keyword,
+      .hljs-selector-tag,
+      .hljs-built_in { color: #ff7b72; }
+      .hljs-string,
+      .hljs-attr { color: #a5d6ff; }
+      .hljs-number,
+      .hljs-literal { color: #79c0ff; }
+      .hljs-comment { color: #8b949e; }
+      .hljs-function,
+      .hljs-title { color: #d2a8ff; }
+      .hljs-variable,
+      .hljs-params { color: #ffa657; }
+      .hljs-type,
+      .hljs-class { color: #7ee787; }
 
       .message.error {
         background: #4a1c1c;
@@ -509,6 +614,32 @@
     <script>
       const { ipcRenderer } = require("electron");
 
+      // Load marked and highlight.js with error handling
+      let marked, hljs;
+      try {
+        marked = require("marked").marked;
+        hljs = require("highlight.js");
+
+        // Configure marked with syntax highlighting
+        marked.setOptions({
+          highlight: function (code, lang) {
+            if (lang && hljs.getLanguage(lang)) {
+              try {
+                return hljs.highlight(code, { language: lang }).value;
+              } catch (e) {}
+            }
+            return hljs.highlightAuto(code).value;
+          },
+          breaks: true,
+          gfm: true,
+        });
+        console.log("Markdown libraries loaded");
+      } catch (err) {
+        console.error("Failed to load markdown libraries:", err);
+        // Fallback: marked will just return plain text
+        marked = { parse: (text) => text.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>") };
+      }
+
       const input = document.getElementById("input");
       const sendBtn = document.getElementById("sendBtn");
       const chatContainer = document.getElementById("chatContainer");
@@ -537,7 +668,18 @@
 
         const msg = document.createElement("div");
         msg.className = `message ${type}`;
-        msg.textContent = content;
+
+        // Render markdown for assistant messages, plain text for user
+        if (type === "assistant" && marked) {
+          try {
+            msg.innerHTML = typeof marked === "function" ? marked(content) : marked.parse(content);
+          } catch (e) {
+            msg.textContent = content;
+          }
+        } else {
+          msg.textContent = content;
+        }
+
         chatContainer.appendChild(msg);
         chatContainer.scrollTop = chatContainer.scrollHeight;
         return msg;

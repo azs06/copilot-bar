@@ -67,10 +67,48 @@ function registerShortcut(mb: ReturnType<typeof menubar>, shortcut: string): boo
 
 app.whenReady().then(async () => {
   // Initialize database first
+  console.log("Initializing database...");
   await initDb();
+  console.log("Database initialized");
 
   // Initialize copilot service
+  console.log("Initializing Copilot service...");
   await copilotService.initialize();
+  console.log("Copilot service initialized");
+
+  // Register IPC handlers BEFORE creating menubar (which preloads window)
+  ipcMain.handle("chat", async (_event, prompt: string) => {
+    try {
+      const result = await copilotService.chat(prompt);
+      return { success: true, result };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  });
+
+  ipcMain.handle("open-config", () => {
+    shell.openPath(getConfigPath());
+  });
+
+  ipcMain.handle("get-config", () => {
+    try {
+      return loadConfig();
+    } catch (error) {
+      console.error("Error loading config:", error);
+      return {
+        model: "gpt-5-mini",
+        shortcut: "CommandOrControl+Shift+T",
+        theme: "dark",
+      };
+    }
+  });
+
+  ipcMain.handle("get-config-value", (_event, key: string) => {
+    return getConfig(key);
+  });
 
   const icon = createIcon();
 
@@ -87,6 +125,15 @@ app.whenReady().then(async () => {
       },
     },
     preloadWindow: true,
+  });
+
+  // set-config needs mb reference, so register after
+  ipcMain.handle("set-config", (_event, key: string, value: string) => {
+    setConfig(key, value);
+    if (key === "shortcut") {
+      registerShortcut(mb, value);
+    }
+    return { success: true };
   });
 
   mb.on("ready", () => {
@@ -109,42 +156,6 @@ app.whenReady().then(async () => {
         mb.window.webContents.send("render-widget", event);
       }
     });
-  });
-
-  // IPC handlers
-  ipcMain.handle("chat", async (_event, prompt: string) => {
-    try {
-      const result = await copilotService.chat(prompt);
-      return { success: true, result };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
-  });
-
-  ipcMain.handle("open-config", () => {
-    shell.openPath(getConfigPath());
-  });
-
-  ipcMain.handle("get-config", () => {
-    return loadConfig();
-  });
-
-  ipcMain.handle("set-config", (_event, key: string, value: string) => {
-    setConfig(key, value);
-
-    // If shortcut changed, re-register it
-    if (key === "shortcut") {
-      registerShortcut(mb, value);
-    }
-
-    return { success: true };
-  });
-
-  ipcMain.handle("get-config-value", (_event, key: string) => {
-    return getConfig(key);
   });
 
   // Cleanup on quit
