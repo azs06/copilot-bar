@@ -701,6 +701,7 @@
         <span class="model-badge" id="modelBadge">loading...</span>
       </div>
       <div class="header-actions">
+        <button class="config-btn" id="screenshotBtn" title="Capture screenshot">📷</button>
         <button class="config-btn" id="clearBtn" title="Clear chat">🗑️</button>
         <button class="config-btn" id="configBtn" title="Settings">⚙️</button>
         <button class="config-btn" id="quitBtn" title="Quit app">✕</button>
@@ -767,6 +768,7 @@
       const configBtn = document.getElementById("configBtn");
       const clearBtn = document.getElementById("clearBtn");
       const quitBtn = document.getElementById("quitBtn");
+      const screenshotBtn = document.getElementById("screenshotBtn");
       const modelBadge = document.getElementById("modelBadge");
 
       let isLoading = false;
@@ -983,6 +985,31 @@
       // Quit app
       quitBtn.addEventListener("click", () => {
         ipcRenderer.invoke("quit-app");
+      });
+
+      // Screenshot capture
+      screenshotBtn.addEventListener("click", async () => {
+        // Remove empty state if present
+        if (emptyState && emptyState.parentNode) {
+          emptyState.remove();
+        }
+
+        addMessage("Capturing screenshot...", "assistant");
+
+        try {
+          const result = await ipcRenderer.invoke("capture-screenshot");
+          if (result.success) {
+            if (result.url) {
+              addMessage(`Screenshot captured and uploaded!\n\n${result.url}`, "assistant");
+            } else {
+              addMessage(`Screenshot saved and copied to clipboard!\n\nSaved to: ${result.path}`, "assistant");
+            }
+          } else {
+            addMessage(`Screenshot failed: ${result.error}`, "error");
+          }
+        } catch (err) {
+          addMessage(`Screenshot error: ${err.message || "Unknown error"}`, "error");
+        }
       });
 
       // Listen for tool events from main process

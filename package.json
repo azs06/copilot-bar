@@ -10,7 +10,9 @@
     "dev": "npm run build && electron ."
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.975.0",
     "@github/copilot-sdk": "^0.1.16",
+    "dotenv": "^17.2.3",
     "electron": "^28.0.0",
     "highlight.js": "^11.11.1",
     "marked": "^17.0.1",

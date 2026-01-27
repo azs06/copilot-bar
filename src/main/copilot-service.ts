@@ -1,6 +1,7 @@
 import { CopilotClient, type CopilotSession, defineTool } from "@github/copilot-sdk";
 import { Notification } from "electron";
 import { loadConfig } from "./database.js";
+import { captureAndUpload, isS3Configured } from "./screenshot-service.js";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -15,6 +16,29 @@ interface Reminder {
 }
 
 const activeReminders: Map<string, Reminder> = new Map();
+
+// Module-level screenshot state for vision analysis
+let lastScreenshotPath: string | null = null;
+let lastScreenshotTime: number = 0;
+const SCREENSHOT_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+
+function setLastScreenshot(path: string): void {
+  lastScreenshotPath = path;
+  lastScreenshotTime = Date.now();
+}
+
+function getLastScreenshot(): string | null {
+  // Return null if screenshot is too old
+  if (lastScreenshotPath && Date.now() - lastScreenshotTime < SCREENSHOT_EXPIRY_MS) {
+    return lastScreenshotPath;
+  }
+  return null;
+}
+
+function clearLastScreenshot(): void {
+  lastScreenshotPath = null;
+  lastScreenshotTime = 0;
+}
 
 function generateReminderId(): string {
   return `reminder_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -489,6 +513,51 @@ const convertUnitTool = defineTool("convert_unit", {
   },
 });
 
+// Screenshot tool
+const captureScreenshotTool = defineTool("capture_screenshot", {
+  description: "Capture a screenshot of the user's screen. After capturing, you can analyze what's on screen. Use this when the user asks to take a screenshot, capture their screen, or asks about what's visible on their display.",
+  parameters: {
+    type: "object",
+    properties: {},
+  },
+  handler: async () => {
+    try {
+      const result = await captureAndUpload();
+      if (result.success) {
+        if (result.url) {
+          return {
+            success: true,
+            url: result.url,
+            message: `Screenshot captured and uploaded: ${result.url}`,
+          };
+        } else {
+          // Store the path for vision analysis in follow-up messages
+          if (result.path) {
+            setLastScreenshot(result.path);
+          }
+          return {
+            success: true,
+            path: result.path,
+            copied: result.copied,
+            message: `Screenshot saved to ${result.path} and copied to clipboard. I can now see what's on your screen.`,
+            hasVisionContext: true,
+          };
+        }
+      } else {
+        return {
+          success: false,
+          error: result.error || "Failed to capture screenshot",
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Screenshot capture failed",
+      };
+    }
+  },
+});
+
 const systemTools = [
   setVolumeTool,
   getVolumeTool,
@@ -506,6 +575,7 @@ const systemTools = [
   getTimeTool,
   showUnitConverterTool,
   convertUnitTool,
+  captureScreenshotTool,
 ];
 
 export interface ToolEvent {
@@ -607,8 +677,20 @@ export class CopilotService {
       });
     }
 
+    // Build message options with optional screenshot attachment for vision
+    const messageOptions: { prompt: string; attachments?: Array<{ type: "file"; path: string; displayName?: string }> } = { prompt };
+
+    const screenshotPath = getLastScreenshot();
+    if (screenshotPath) {
+      messageOptions.attachments = [
+        { type: "file", path: screenshotPath, displayName: "screenshot.png" }
+      ];
+      // Clear the screenshot after attaching so it's not sent repeatedly
+      clearLastScreenshot();
+    }
+
     const response = await this.session.sendAndWait(
-      { prompt },
+      messageOptions,
       120000 // 2 minute timeout
     );
 

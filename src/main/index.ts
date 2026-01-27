@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { app, ipcMain, shell, nativeImage, globalShortcut } from "electron";
 import { menubar } from "menubar";
 import { fileURLToPath } from "node:url";
@@ -5,6 +6,7 @@ import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { CopilotService } from "./copilot-service.js";
 import { initDb, loadConfig, getConfig, setConfig, getConfigPath, closeDb } from "./database.js";
+import { captureAndUpload } from "./screenshot-service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -112,6 +114,15 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("quit-app", () => {
     app.quit();
+  });
+
+  ipcMain.handle("capture-screenshot", async () => {
+    try {
+      return await captureAndUpload();
+    } catch (error) {
+      console.error("Screenshot error:", error);
+      return { success: false, error: error instanceof Error ? error.message : "Screenshot failed" };
+    }
   });
 
   const icon = createIcon();
