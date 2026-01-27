@@ -329,6 +329,135 @@
         opacity: 0.5;
         cursor: not-allowed;
       }
+
+      /* Settings Panel */
+      .settings-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+      }
+
+      .settings-panel {
+        background: #252525;
+        border: 1px solid #333;
+        border-radius: 12px;
+        padding: 20px;
+        width: 340px;
+        max-width: 90%;
+      }
+
+      .settings-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+
+      .settings-header h2 {
+        font-size: 16px;
+        font-weight: 600;
+        color: #fff;
+      }
+
+      .settings-close {
+        background: none;
+        border: none;
+        color: #888;
+        font-size: 20px;
+        cursor: pointer;
+        padding: 4px 8px;
+        border-radius: 4px;
+      }
+
+      .settings-close:hover {
+        color: #fff;
+        background: #333;
+      }
+
+      .settings-row {
+        margin-bottom: 16px;
+      }
+
+      .settings-row label {
+        display: block;
+        font-size: 12px;
+        color: #888;
+        margin-bottom: 6px;
+      }
+
+      .settings-row input,
+      .settings-row select {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid #333;
+        border-radius: 6px;
+        background: #1a1a1a;
+        color: #e0e0e0;
+        font-size: 13px;
+        font-family: inherit;
+      }
+
+      .settings-row input:focus,
+      .settings-row select:focus {
+        outline: none;
+        border-color: #0066ff;
+      }
+
+      .settings-hint {
+        font-size: 11px;
+        color: #666;
+        margin-top: 4px;
+      }
+
+      .settings-row .shortcut-display {
+        font-family: "SF Mono", monospace;
+        background: #1a1a1a;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        color: #0066ff;
+        display: inline-block;
+      }
+
+      .settings-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        margin-top: 20px;
+      }
+
+      .settings-btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+
+      .settings-btn.secondary {
+        background: #333;
+        color: #fff;
+      }
+
+      .settings-btn.secondary:hover {
+        background: #444;
+      }
+
+      .settings-btn.primary {
+        background: #0066ff;
+        color: #fff;
+      }
+
+      .settings-btn.primary:hover {
+        background: #0052cc;
+      }
     </style>
   </head>
   <body>
@@ -477,8 +606,100 @@
         input.style.height = Math.min(input.scrollHeight, 120) + "px";
       });
 
-      configBtn.addEventListener("click", () => {
-        ipcRenderer.invoke("open-config");
+      // Settings panel
+      let currentConfig = {};
+
+      function showSettings() {
+        const overlay = document.createElement("div");
+        overlay.className = "settings-overlay";
+        overlay.innerHTML = `
+          <div class="settings-panel">
+            <div class="settings-header">
+              <h2>Settings</h2>
+              <button class="settings-close">&times;</button>
+            </div>
+            <div class="settings-row">
+              <label>Model</label>
+              <select id="settingsModel">
+                <option value="gpt-5-mini">gpt-5-mini</option>
+                <option value="gpt-5">gpt-5</option>
+                <option value="claude-3.5-sonnet">claude-3.5-sonnet</option>
+                <option value="claude-4-opus">claude-4-opus</option>
+              </select>
+            </div>
+            <div class="settings-row">
+              <label>Global Shortcut</label>
+              <div class="shortcut-display" id="shortcutDisplay">${currentConfig.shortcut || "..."}</div>
+              <p class="settings-hint">Press any key combination to change</p>
+              <input type="text" id="shortcutInput" placeholder="Press keys..." readonly style="margin-top: 8px;" />
+            </div>
+            <div class="settings-actions">
+              <button class="settings-btn secondary" id="settingsCancel">Cancel</button>
+              <button class="settings-btn primary" id="settingsSave">Save</button>
+            </div>
+          </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        const modelSelect = overlay.querySelector("#settingsModel");
+        const shortcutInput = overlay.querySelector("#shortcutInput");
+        const shortcutDisplay = overlay.querySelector("#shortcutDisplay");
+        const closeBtn = overlay.querySelector(".settings-close");
+        const cancelBtn = overlay.querySelector("#settingsCancel");
+        const saveBtn = overlay.querySelector("#settingsSave");
+
+        // Set current values
+        modelSelect.value = currentConfig.model || "gpt-5-mini";
+        let newShortcut = currentConfig.shortcut;
+
+        // Shortcut recording
+        shortcutInput.addEventListener("keydown", (e) => {
+          e.preventDefault();
+          const parts = [];
+          if (e.metaKey || e.ctrlKey) parts.push("CommandOrControl");
+          if (e.altKey) parts.push("Alt");
+          if (e.shiftKey) parts.push("Shift");
+
+          const key = e.key;
+          if (!["Control", "Shift", "Alt", "Meta"].includes(key)) {
+            parts.push(key.length === 1 ? key.toUpperCase() : key);
+          }
+
+          if (parts.length > 1) {
+            newShortcut = parts.join("+");
+            shortcutInput.value = newShortcut;
+            shortcutDisplay.textContent = newShortcut;
+          }
+        });
+
+        // Close handlers
+        const close = () => overlay.remove();
+        closeBtn.onclick = close;
+        cancelBtn.onclick = close;
+        overlay.onclick = (e) => {
+          if (e.target === overlay) close();
+        };
+
+        // Save handler
+        saveBtn.onclick = async () => {
+          const newModel = modelSelect.value;
+          if (newModel !== currentConfig.model) {
+            await ipcRenderer.invoke("set-config", "model", newModel);
+            currentConfig.model = newModel;
+            modelBadge.textContent = newModel;
+          }
+          if (newShortcut && newShortcut !== currentConfig.shortcut) {
+            await ipcRenderer.invoke("set-config", "shortcut", newShortcut);
+            currentConfig.shortcut = newShortcut;
+          }
+          close();
+        };
+      }
+
+      configBtn.addEventListener("click", async () => {
+        currentConfig = await ipcRenderer.invoke("get-config");
+        showSettings();
       });
 
       // Clear chat

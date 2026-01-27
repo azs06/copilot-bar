@@ -1,10 +1,10 @@
-import { app, ipcMain, shell, nativeImage } from "electron";
+import { app, ipcMain, shell, nativeImage, globalShortcut } from "electron";
 import { menubar } from "menubar";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { CopilotService } from "./copilot-service.js";
-import { getConfigPath, loadConfig } from "./config.js";
+import { initDb, loadConfig, getConfig, setConfig, getConfigPath, closeDb } from "./database.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -29,7 +29,46 @@ function createIcon(): Electron.NativeImage {
   return fallback;
 }
 
+// Track current shortcut for re-registration
+let currentShortcut: string | null = null;
+
+// Register global shortcut
+function registerShortcut(mb: ReturnType<typeof menubar>, shortcut: string): boolean {
+  // Unregister previous shortcut if exists
+  if (currentShortcut) {
+    globalShortcut.unregister(currentShortcut);
+  }
+
+  try {
+    const registered = globalShortcut.register(shortcut, () => {
+      if (mb.window) {
+        if (mb.window.isVisible()) {
+          mb.hideWindow();
+        } else {
+          mb.showWindow();
+          mb.window.focus();
+        }
+      }
+    });
+
+    if (registered) {
+      currentShortcut = shortcut;
+      console.log(`Global shortcut registered: ${shortcut}`);
+      return true;
+    } else {
+      console.warn(`Failed to register shortcut: ${shortcut}`);
+      return false;
+    }
+  } catch (error) {
+    console.error(`Error registering shortcut: ${error}`);
+    return false;
+  }
+}
+
 app.whenReady().then(async () => {
+  // Initialize database first
+  await initDb();
+
   // Initialize copilot service
   await copilotService.initialize();
 
@@ -52,6 +91,10 @@ app.whenReady().then(async () => {
 
   mb.on("ready", () => {
     console.log("Copilot Bar is ready");
+
+    // Register global shortcut from config
+    const config = loadConfig();
+    registerShortcut(mb, config.shortcut);
 
     // Set up tool event handler to notify renderer
     copilotService.setToolEventHandler((event) => {
@@ -89,8 +132,30 @@ app.whenReady().then(async () => {
     return loadConfig();
   });
 
+  ipcMain.handle("set-config", (_event, key: string, value: string) => {
+    setConfig(key, value);
+
+    // If shortcut changed, re-register it
+    if (key === "shortcut") {
+      registerShortcut(mb, value);
+    }
+
+    return { success: true };
+  });
+
+  ipcMain.handle("get-config-value", (_event, key: string) => {
+    return getConfig(key);
+  });
+
   // Cleanup on quit
   app.on("before-quit", async () => {
     await copilotService.cleanup();
+    globalShortcut.unregisterAll();
+    closeDb();
+  });
+
+  // Unregister shortcuts when app quits
+  app.on("will-quit", () => {
+    globalShortcut.unregisterAll();
   });
 });
