@@ -1,5 +1,5 @@
 import { CopilotClient, type CopilotSession, defineTool } from "@github/copilot-sdk";
-import { loadConfig } from "./config.js";
+import { loadConfig } from "./database.js";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 
