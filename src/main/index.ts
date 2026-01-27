@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { app, ipcMain, shell, nativeImage, globalShortcut } from "electron";
 import { menubar } from "menubar";
 import { fileURLToPath } from "node:url";
@@ -5,6 +6,7 @@ import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { CopilotService } from "./copilot-service.js";
 import { initDb, loadConfig, getConfig, setConfig, getConfigPath, closeDb } from "./database.js";
+import { captureAndUpload } from "./screenshot-service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -67,10 +69,61 @@ function registerShortcut(mb: ReturnType<typeof menubar>, shortcut: string): boo
 
 app.whenReady().then(async () => {
   // Initialize database first
+  console.log("Initializing database...");
   await initDb();
+  console.log("Database initialized");
 
   // Initialize copilot service
+  console.log("Initializing Copilot service...");
   await copilotService.initialize();
+  console.log("Copilot service initialized");
+
+  // Register IPC handlers BEFORE creating menubar (which preloads window)
+  ipcMain.handle("chat", async (_event, prompt: string) => {
+    try {
+      const result = await copilotService.chat(prompt);
+      return { success: true, result };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      };
+    }
+  });
+
+  ipcMain.handle("open-config", () => {
+    shell.openPath(getConfigPath());
+  });
+
+  ipcMain.handle("get-config", () => {
+    try {
+      return loadConfig();
+    } catch (error) {
+      console.error("Error loading config:", error);
+      return {
+        model: "gpt-5-mini",
+        shortcut: "CommandOrControl+Shift+T",
+        theme: "dark",
+      };
+    }
+  });
+
+  ipcMain.handle("get-config-value", (_event, key: string) => {
+    return getConfig(key);
+  });
+
+  ipcMain.handle("quit-app", () => {
+    app.quit();
+  });
+
+  ipcMain.handle("capture-screenshot", async () => {
+    try {
+      return await captureAndUpload();
+    } catch (error) {
+      console.error("Screenshot error:", error);
+      return { success: false, error: error instanceof Error ? error.message : "Screenshot failed" };
+    }
+  });
 
   const icon = createIcon();
 
@@ -87,6 +140,15 @@ app.whenReady().then(async () => {
       },
     },
     preloadWindow: true,
+  });
+
+  // set-config needs mb reference, so register after
+  ipcMain.handle("set-config", (_event, key: string, value: string) => {
+    setConfig(key, value);
+    if (key === "shortcut") {
+      registerShortcut(mb, value);
+    }
+    return { success: true };
   });
 
   mb.on("ready", () => {
@@ -109,42 +171,6 @@ app.whenReady().then(async () => {
         mb.window.webContents.send("render-widget", event);
       }
     });
-  });
-
-  // IPC handlers
-  ipcMain.handle("chat", async (_event, prompt: string) => {
-    try {
-      const result = await copilotService.chat(prompt);
-      return { success: true, result };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      };
-    }
-  });
-
-  ipcMain.handle("open-config", () => {
-    shell.openPath(getConfigPath());
-  });
-
-  ipcMain.handle("get-config", () => {
-    return loadConfig();
-  });
-
-  ipcMain.handle("set-config", (_event, key: string, value: string) => {
-    setConfig(key, value);
-
-    // If shortcut changed, re-register it
-    if (key === "shortcut") {
-      registerShortcut(mb, value);
-    }
-
-    return { success: true };
-  });
-
-  ipcMain.handle("get-config-value", (_event, key: string) => {
-    return getConfig(key);
   });
 
   // Cleanup on quit
