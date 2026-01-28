@@ -1021,7 +1021,7 @@ export interface WidgetEvent {
 
 export class CopilotService {
   private client: CopilotClient | null = null;
-  private session: CopilotSession | null = null;
+  private sessions: Map<number, CopilotSession> = new Map();
   private currentModel: string = "";
   private onToolEvent: ((event: ToolEvent) => void) | null = null;
   private onWidgetEvent: ((event: WidgetEvent) => void) | null = null;
@@ -1040,7 +1040,68 @@ export class CopilotService {
     await this.client.start();
   }
 
-  async chat(prompt: string): Promise<string> {
+  private async getOrCreateSession(sessionId: number, model: string): Promise<CopilotSession> {
+    if (!this.client) {
+      await this.initialize();
+    }
+
+    const existing = this.sessions.get(sessionId);
+    if (existing) return existing;
+
+    const session = await this.client!.createSession({
+      model,
+      tools: systemTools,
+    });
+
+    session.on((event) => {
+      if (event.type === "tool.execution_start" && this.onToolEvent) {
+        this.activeTools.set(event.data.toolCallId, event.data.toolName);
+        this.onToolEvent({
+          type: "start",
+          toolName: event.data.toolName,
+          toolCallId: event.data.toolCallId,
+        });
+      } else if (event.type === "tool.execution_complete") {
+        const toolName = this.activeTools.get(event.data.toolCallId) || "tool";
+        this.activeTools.delete(event.data.toolCallId);
+
+        if (this.onToolEvent) {
+          this.onToolEvent({
+            type: "complete",
+            toolName,
+            toolCallId: event.data.toolCallId,
+          });
+        }
+
+        if (this.onWidgetEvent && event.data.result?.content) {
+          try {
+            const result = JSON.parse(event.data.result.content);
+            if (result.widget) {
+              this.onWidgetEvent({
+                type: result.widget,
+                duration: result.duration,
+                label: result.label,
+                cities: result.cities,
+                category: result.category,
+                enabled: result.enabled,
+                connected: result.connected,
+                currentNetwork: result.currentNetwork ?? null,
+                savedNetworks: result.savedNetworks,
+                error: result.error,
+              });
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+    });
+
+    this.sessions.set(sessionId, session);
+    return session;
+  }
+
+  async chat(prompt: string, sessionId: number = 1): Promise<string> {
     if (!this.client) {
       await this.initialize();
     }
@@ -1048,66 +1109,13 @@ export class CopilotService {
     const config = loadConfig();
 
     // Recreate session if model changed
-    if (this.session && this.currentModel !== config.model) {
-      await this.session.destroy();
-      this.session = null;
+    if (this.sessions.size > 0 && this.currentModel !== config.model) {
+      await Promise.allSettled(Array.from(this.sessions.values()).map((s) => s.destroy()));
+      this.sessions.clear();
     }
 
-    if (!this.session) {
-      this.session = await this.client!.createSession({
-        model: config.model,
-        tools: systemTools, // Add custom system control tools
-      });
-      this.currentModel = config.model;
-
-      // Set up event handler for tool executions
-      this.session.on((event) => {
-        if (event.type === "tool.execution_start" && this.onToolEvent) {
-          // Track active tool
-          this.activeTools.set(event.data.toolCallId, event.data.toolName);
-          this.onToolEvent({
-            type: "start",
-            toolName: event.data.toolName,
-            toolCallId: event.data.toolCallId,
-          });
-        } else if (event.type === "tool.execution_complete") {
-          // Get tool name from tracked active tools
-          const toolName = this.activeTools.get(event.data.toolCallId) || "tool";
-          this.activeTools.delete(event.data.toolCallId);
-
-          if (this.onToolEvent) {
-            this.onToolEvent({
-              type: "complete",
-              toolName,
-              toolCallId: event.data.toolCallId,
-            });
-          }
-
-          // Check if this is a widget tool and emit widget event
-          if (this.onWidgetEvent && event.data.result?.content) {
-            try {
-              const result = JSON.parse(event.data.result.content);
-              if (result.widget) {
-                this.onWidgetEvent({
-                  type: result.widget,
-                  duration: result.duration,
-                  label: result.label,
-                  cities: result.cities,
-                  category: result.category,
-                  enabled: result.enabled,
-                  connected: result.connected,
-                  currentNetwork: result.currentNetwork ?? null,
-                  savedNetworks: result.savedNetworks,
-                  error: result.error,
-                });
-              }
-            } catch {
-              // Not JSON or no widget, ignore
-            }
-          }
-        }
-      });
-    }
+    this.currentModel = config.model;
+    const session = await this.getOrCreateSession(sessionId, config.model);
 
     // Build message options with optional screenshot attachment for vision
     const messageOptions: { prompt: string; attachments?: Array<{ type: "file"; path: string; displayName?: string }> } = { prompt };
@@ -1121,7 +1129,7 @@ export class CopilotService {
       clearLastScreenshot();
     }
 
-    const response = await this.session.sendAndWait(
+    const response = await session.sendAndWait(
       messageOptions,
       120000 // 2 minute timeout
     );
@@ -1130,9 +1138,9 @@ export class CopilotService {
   }
 
   async cleanup(): Promise<void> {
-    if (this.session) {
-      await this.session.destroy();
-      this.session = null;
+    if (this.sessions.size > 0) {
+      await Promise.allSettled(Array.from(this.sessions.values()).map((s) => s.destroy()));
+      this.sessions.clear();
     }
     if (this.client) {
       await this.client.stop();

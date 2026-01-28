@@ -20,6 +20,50 @@ const DEFAULT_CONFIG: Record<string, string> = {
 
 let db: SqlJsDatabase | null = null;
 
+export interface ChatSession {
+  id: number;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  last_message_at: string | null;
+}
+
+function hasColumn(database: SqlJsDatabase, table: string, column: string): boolean {
+  const result = database.exec(`PRAGMA table_info(${table})`);
+  if (result.length === 0) return false;
+  return result[0].values.some((row) => row[1] === column);
+}
+
+function getSingleNumber(database: SqlJsDatabase, sql: string, params: any[] = []): number | null {
+  const result = database.exec(sql, params);
+  const value = result[0]?.values?.[0]?.[0];
+  if (typeof value === "number") return value;
+  if (typeof value === "string" && value.trim() !== "") return Number(value);
+  return null;
+}
+
+function ensureDefaultChatSession(database: SqlJsDatabase): number {
+  const existing = getSingleNumber(database, "SELECT id FROM chat_sessions ORDER BY id ASC LIMIT 1");
+  if (existing) return existing;
+
+  database.run("INSERT INTO chat_sessions (title) VALUES (?)", ["Default"]);
+  saveDb();
+  return getSingleNumber(database, "SELECT last_insert_rowid()") || 1;
+}
+
+function getActiveSessionId(database: SqlJsDatabase): number {
+  const raw = getConfig("active_session_id");
+  const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+  if (!Number.isNaN(parsed) && parsed > 0) {
+    const exists = getSingleNumber(database, "SELECT id FROM chat_sessions WHERE id = ? LIMIT 1", [parsed]);
+    if (exists) return parsed;
+  }
+
+  const fallback = ensureDefaultChatSession(database);
+  setConfig("active_session_id", String(fallback));
+  return fallback;
+}
+
 // Initialize database asynchronously
 async function initDb(): Promise<SqlJsDatabase> {
   if (db) return db;
@@ -61,12 +105,37 @@ async function initDb(): Promise<SqlJsDatabase> {
       content TEXT NOT NULL,
       timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS chat_sessions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      last_message_at DATETIME
+    );
   `);
 
   // Initialize default config if not exists
   for (const [key, value] of Object.entries(DEFAULT_CONFIG)) {
     db.run("INSERT OR IGNORE INTO config (key, value) VALUES (?, ?)", [key, value]);
   }
+
+  // Migrations for chat sessions
+  if (!hasColumn(db, "chat_history", "session_id")) {
+    db.run("ALTER TABLE chat_history ADD COLUMN session_id INTEGER");
+  }
+
+  // Ensure at least one session exists and mark it active if needed
+  const defaultSessionId = ensureDefaultChatSession(db);
+  if (!getConfig("active_session_id")) {
+    setConfig("active_session_id", String(defaultSessionId));
+  }
+
+  // Backfill existing rows into the default session
+  db.run("UPDATE chat_history SET session_id = ? WHERE session_id IS NULL", [defaultSessionId]);
+
+  // Index for session-scoped history queries
+  db.run("CREATE INDEX IF NOT EXISTS idx_chat_history_session_id ON chat_history(session_id, id)");
 
   saveDb();
   return db;
@@ -146,22 +215,28 @@ export interface ChatMessage {
   timestamp: string;
 }
 
-export function addChatMessage(role: string, content: string): number {
+export function addChatMessage(role: string, content: string, sessionId?: number): number {
   const database = getDb();
+  const sid = sessionId ?? getActiveSessionId(database);
   database.run(
-    "INSERT INTO chat_history (role, content) VALUES (?, ?)",
-    [role, content]
+    "INSERT INTO chat_history (role, content, session_id) VALUES (?, ?, ?)",
+    [role, content, sid]
+  );
+  database.run(
+    "UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP, last_message_at = CURRENT_TIMESTAMP WHERE id = ?",
+    [sid]
   );
   saveDb();
   const result = database.exec("SELECT last_insert_rowid()");
   return result[0]?.values[0]?.[0] as number || 0;
 }
 
-export function getChatHistory(limit: number = 100): ChatMessage[] {
+export function getChatHistory(sessionId?: number, limit: number = 100): ChatMessage[] {
   const database = getDb();
+  const sid = sessionId ?? getActiveSessionId(database);
   const result = database.exec(
-    `SELECT id, role, content, timestamp FROM chat_history ORDER BY id DESC LIMIT ?`,
-    [limit]
+    `SELECT id, role, content, timestamp FROM chat_history WHERE session_id = ? ORDER BY id DESC LIMIT ?`,
+    [sid, limit]
   );
   if (result.length === 0) return [];
   
@@ -173,10 +248,89 @@ export function getChatHistory(limit: number = 100): ChatMessage[] {
   })).reverse(); // Return in chronological order
 }
 
-export function clearChatHistory(): void {
+export function clearChatHistory(sessionId?: number): void {
   const database = getDb();
-  database.run("DELETE FROM chat_history");
+  const sid = sessionId ?? getActiveSessionId(database);
+  database.run("DELETE FROM chat_history WHERE session_id = ?", [sid]);
+  database.run("UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", [sid]);
   saveDb();
+}
+
+// Chat session functions
+export function listChatSessions(limit: number = 50): ChatSession[] {
+  const database = getDb();
+  const result = database.exec(
+    `SELECT id, title, created_at, updated_at, last_message_at
+     FROM chat_sessions
+     ORDER BY COALESCE(last_message_at, updated_at, created_at) DESC
+     LIMIT ?`,
+    [limit]
+  );
+  if (result.length === 0) return [];
+  return result[0].values.map((row) => ({
+    id: row[0] as number,
+    title: row[1] as string,
+    created_at: row[2] as string,
+    updated_at: row[3] as string,
+    last_message_at: (row[4] as string | null) ?? null,
+  }));
+}
+
+export function createChatSession(title?: string): number {
+  const database = getDb();
+  const finalTitle = (title && title.trim()) ? title.trim() : "New chat";
+  database.run("INSERT INTO chat_sessions (title) VALUES (?)", [finalTitle]);
+  saveDb();
+  const id = getSingleNumber(database, "SELECT last_insert_rowid()") || 0;
+  if (id > 0) {
+    setConfig("active_session_id", String(id));
+  }
+  return id;
+}
+
+export function renameChatSession(id: number, title: string): void {
+  const database = getDb();
+  const finalTitle = title.trim();
+  if (!finalTitle) return;
+  database.run("UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [finalTitle, id]);
+  saveDb();
+}
+
+export function deleteChatSession(id: number): { activeSessionId: number } {
+  const database = getDb();
+  const activeRaw = getConfig("active_session_id");
+  const activeBefore = activeRaw ? Number.parseInt(activeRaw, 10) : NaN;
+
+  database.run("DELETE FROM chat_history WHERE session_id = ?", [id]);
+  database.run("DELETE FROM chat_sessions WHERE id = ?", [id]);
+
+  // Ensure there is always an active session
+  if (!Number.isNaN(activeBefore) && activeBefore === id) {
+    const next = getSingleNumber(database, "SELECT id FROM chat_sessions ORDER BY COALESCE(last_message_at, updated_at, created_at) DESC LIMIT 1");
+    const fallback = next || ensureDefaultChatSession(database);
+    setConfig("active_session_id", String(fallback));
+  }
+
+  saveDb();
+  return { activeSessionId: getActiveSessionId(database) };
+}
+
+export function setActiveChatSession(id: number): { id: number; title: string } {
+  const database = getDb();
+  const exists = getSingleNumber(database, "SELECT id FROM chat_sessions WHERE id = ? LIMIT 1", [id]);
+  const sid = exists || ensureDefaultChatSession(database);
+  setConfig("active_session_id", String(sid));
+  const titleResult = database.exec("SELECT title FROM chat_sessions WHERE id = ? LIMIT 1", [sid]);
+  const title = (titleResult[0]?.values?.[0]?.[0] as string) || "Chat";
+  return { id: sid, title };
+}
+
+export function getActiveChatSession(): { id: number; title: string } {
+  const database = getDb();
+  const sid = getActiveSessionId(database);
+  const titleResult = database.exec("SELECT title FROM chat_sessions WHERE id = ? LIMIT 1", [sid]);
+  const title = (titleResult[0]?.values?.[0]?.[0] as string) || "Chat";
+  return { id: sid, title };
 }
 
 // Close database

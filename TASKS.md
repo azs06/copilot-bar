@@ -1,10 +1,10 @@
 # Copilot Bar - Feature Tasks
 
-> **Progress: 11/27 completed (41%)**
+> **Progress: 12/27 completed (44%)**
 > 
-> ████████░░░░░░░░░░░░ 
+> █████████░░░░░░░░░░░ 
 
-## Completed ✅ (11)
+## Completed ✅ (12)
 
 | # | Feature | Implementation |
 |---|---------|----------------|
@@ -19,6 +19,7 @@
 | 20 | Light/dark theme toggle | CSS variables + settings UI |
 | 22 | WiFi toggle (on/off/status) | networksetup command |
 | 26 | List available WiFi networks | airport utility scan |
+| 21 | Chat session management (multiple conversations) | SQLite chat_sessions + session_id |
 
 ## Pending 🚧 (16)
 
@@ -46,4 +47,4 @@
 - [ ] **#14** Add text-to-speech for responses
 
 ### UI & Persistence (1)
-- [ ] **#21** Add chat session management (multiple conversations)
+- [x] **#21** Add chat session management (multiple conversations)

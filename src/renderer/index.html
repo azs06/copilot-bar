@@ -68,17 +68,32 @@
       }
 
       .header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 12px 16px;
+        padding: 12px 16px 10px 16px;
         border-bottom: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
       }
 
-      .header-left {
+      .header-row {
         display: flex;
         align-items: center;
-        gap: 10px;
+        justify-content: space-between;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .header-meta {
+        justify-content: flex-start;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .header-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
       }
 
       .header h1 {
@@ -88,6 +103,7 @@
         display: flex;
         align-items: center;
         gap: 8px;
+        white-space: nowrap;
       }
 
       .header h1 svg {
@@ -96,13 +112,27 @@
         fill: var(--text-primary);
       }
 
-      .model-badge {
+      .pill {
         font-size: 10px;
-        padding: 3px 8px;
+        padding: 5px 10px;
         background: var(--bg-tertiary);
         color: var(--text-secondary);
-        border-radius: 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 999px;
         font-weight: 500;
+        max-width: 210px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      button.pill {
+        cursor: pointer;
+      }
+
+      button.pill:hover {
+        color: var(--text-primary);
+        background: var(--bg-secondary);
       }
 
       .header-actions {
@@ -111,18 +141,23 @@
       }
 
       .config-btn {
-        background: none;
-        border: none;
+        background: transparent;
+        border: 1px solid transparent;
         color: var(--text-secondary);
         cursor: pointer;
         font-size: 14px;
-        padding: 4px 8px;
-        border-radius: 4px;
+        width: 30px;
+        height: 30px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
       }
 
       .config-btn:hover {
         color: var(--text-primary);
         background: var(--bg-tertiary);
+        border-color: var(--border-color);
       }
 
       .chat-container {
@@ -319,14 +354,20 @@
         display: flex;
         flex-direction: column;
         gap: 6px;
+        position: relative;
       }
 
       .command-hint {
         display: none;
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: calc(100% + 6px);
         border: 1px solid var(--border-color);
         background: var(--bg-secondary);
         border-radius: 8px;
         overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
       }
 
       .command-hint-header {
@@ -929,29 +970,171 @@
         color: white;
         border-color: var(--accent-color);
       }
+
+      /* Sessions Panel */
+      .sessions-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+      }
+
+      .sessions-panel {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 16px;
+        width: 360px;
+        max-width: 92%;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .sessions-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .sessions-header h2 {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .sessions-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .sessions-btn {
+        padding: 8px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .sessions-btn.primary {
+        background: var(--accent-color);
+        border-color: var(--accent-color);
+        color: white;
+      }
+
+      .sessions-btn.primary:hover {
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
+      }
+
+      .sessions-btn:hover {
+        background: var(--border-color);
+      }
+
+      .sessions-list {
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .session-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 10px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        background: var(--bg-primary);
+      }
+
+      .session-item.active {
+        border-color: var(--accent-color);
+      }
+
+      .session-item-main {
+        flex: 1;
+        min-width: 0;
+        cursor: pointer;
+      }
+
+      .session-item-title {
+        font-size: 12px;
+        color: var(--text-primary);
+        font-weight: 500;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .session-item-meta {
+        font-size: 10px;
+        color: var(--text-secondary);
+        margin-top: 2px;
+      }
+
+      .session-item-actions {
+        display: flex;
+        gap: 6px;
+      }
+
+      .session-icon-btn {
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .session-icon-btn:hover {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+      }
     </style>
   </head>
   <body>
     <div class="header">
-      <div class="header-left">
-        <h1>
-          <svg viewBox="0 0 512 416" xmlns="http://www.w3.org/2000/svg">
-            <path
-              d="M181.33 266.143c0-11.497 9.32-20.818 20.818-20.818 11.498 0 20.819 9.321 20.819 20.818v38.373c0 11.497-9.321 20.818-20.819 20.818-11.497 0-20.818-9.32-20.818-20.818v-38.373zM308.807 245.325c-11.477 0-20.798 9.321-20.798 20.818v38.373c0 11.497 9.32 20.818 20.798 20.818 11.497 0 20.818-9.32 20.818-20.818v-38.373c0-11.497-9.32-20.818-20.818-20.818z"
-            />
-            <path
-              d="M512.002 246.393v57.384c-.02 7.411-3.696 14.638-9.67 19.011C431.767 374.444 344.695 416 256 416c-98.138 0-196.379-56.542-246.33-93.21-5.975-4.374-9.65-11.6-9.671-19.012v-57.384a35.347 35.347 0 016.857-20.922l15.583-21.085c8.336-11.312 20.757-14.31 33.98-14.31 4.988-56.953 16.794-97.604 45.024-127.354C155.194 5.77 226.56 0 256 0c29.441 0 100.807 5.77 154.557 62.722 28.19 29.75 40.036 70.401 45.025 127.354 13.263 0 25.602 2.936 33.958 14.31l15.583 21.127c4.476 6.077 6.878 13.345 6.878 20.88zm-97.666-26.075c-.677-13.058-11.292-18.19-22.338-21.824-11.64 7.309-25.848 10.183-39.46 10.183-14.454 0-41.432-3.47-63.872-25.869-5.667-5.625-9.527-14.454-12.155-24.247a212.902 212.902 0 00-20.469-1.088c-6.098 0-13.099.349-20.551 1.088-2.628 9.793-6.509 18.622-12.155 24.247-22.4 22.4-49.418 25.87-63.872 25.87-13.612 0-27.86-2.855-39.501-10.184-11.005 3.613-21.558 8.828-22.277 21.824-1.17 24.555-1.272 49.11-1.375 73.645-.041 12.318-.082 24.658-.288 36.976.062 7.166 4.374 13.818 10.882 16.774 52.97 24.124 103.045 36.278 149.137 36.278 46.01 0 96.085-12.154 149.014-36.278 6.508-2.956 10.84-9.608 10.881-16.774.637-36.832.124-73.809-1.642-110.62h.041z"
-            />
-          </svg>
-          Copilot Bar
-        </h1>
-        <span class="model-badge" id="modelBadge">loading...</span>
+      <div class="header-row">
+        <div class="header-title">
+          <h1>
+            <svg viewBox="0 0 512 416" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M181.33 266.143c0-11.497 9.32-20.818 20.818-20.818 11.498 0 20.819 9.321 20.819 20.818v38.373c0 11.497-9.321 20.818-20.819 20.818-11.497 0-20.818-9.32-20.818-20.818v-38.373zM308.807 245.325c-11.477 0-20.798 9.321-20.798 20.818v38.373c0 11.497 9.32 20.818 20.798 20.818 11.497 0 20.818-9.32 20.818-20.818v-38.373c0-11.497-9.32-20.818-20.818-20.818z"
+              />
+              <path
+                d="M512.002 246.393v57.384c-.02 7.411-3.696 14.638-9.67 19.011C431.767 374.444 344.695 416 256 416c-98.138 0-196.379-56.542-246.33-93.21-5.975-4.374-9.65-11.6-9.671-19.012v-57.384a35.347 35.347 0 016.857-20.922l15.583-21.085c8.336-11.312 20.757-14.31 33.98-14.31 4.988-56.953 16.794-97.604 45.024-127.354C155.194 5.77 226.56 0 256 0c29.441 0 100.807 5.77 154.557 62.722 28.19 29.75 40.036 70.401 45.025 127.354 13.263 0 25.602 2.936 33.958 14.31l15.583 21.127c4.476 6.077 6.878 13.345 6.878 20.88zm-97.666-26.075c-.677-13.058-11.292-18.19-22.338-21.824-11.64 7.309-25.848 10.183-39.46 10.183-14.454 0-41.432-3.47-63.872-25.869-5.667-5.625-9.527-14.454-12.155-24.247a212.902 212.902 0 00-20.469-1.088c-6.098 0-13.099.349-20.551 1.088-2.628 9.793-6.509 18.622-12.155 24.247-22.4 22.4-49.418 25.87-63.872 25.87-13.612 0-27.86-2.855-39.501-10.184-11.005 3.613-21.558 8.828-22.277 21.824-1.17 24.555-1.272 49.11-1.375 73.645-.041 12.318-.082 24.658-.288 36.976.062 7.166 4.374 13.818 10.882 16.774 52.97 24.124 103.045 36.278 149.137 36.278 46.01 0 96.085-12.154 149.014-36.278 6.508-2.956 10.84-9.608 10.881-16.774.637-36.832.124-73.809-1.642-110.62h.041z"
+              />
+            </svg>
+            Copilot Bar
+          </h1>
+        </div>
+        <div class="header-actions">
+          <button class="config-btn" id="screenshotBtn" title="Capture screenshot">📷</button>
+          <button class="config-btn" id="clearBtn" title="Clear chat">🗑️</button>
+          <button class="config-btn" id="configBtn" title="Settings">⚙️</button>
+          <button class="config-btn" id="quitBtn" title="Quit app">✕</button>
+        </div>
       </div>
-      <div class="header-actions">
-        <button class="config-btn" id="screenshotBtn" title="Capture screenshot">📷</button>
-        <button class="config-btn" id="clearBtn" title="Clear chat">🗑️</button>
-        <button class="config-btn" id="configBtn" title="Settings">⚙️</button>
-        <button class="config-btn" id="quitBtn" title="Quit app">✕</button>
+      <div class="header-row header-meta">
+        <button class="pill" id="sessionBadge" type="button" title="Chats">Chat</button>
+        <span class="pill" id="modelBadge">loading...</span>
       </div>
     </div>
 
@@ -1046,8 +1229,10 @@
       const quitBtn = document.getElementById("quitBtn");
       const screenshotBtn = document.getElementById("screenshotBtn");
       const modelBadge = document.getElementById("modelBadge");
+      const sessionBadge = document.getElementById("sessionBadge");
 
       let isLoading = false;
+      let activeSession = { id: null, title: "Chat" };
 
       // Load and display current model + theme
       async function loadConfig() {
@@ -1069,7 +1254,7 @@
       // Load chat history on startup
       async function loadChatHistory() {
         try {
-          const history = await ipcRenderer.invoke("get-chat-history", 100);
+          const history = await ipcRenderer.invoke("get-chat-history", activeSession.id || undefined, 100);
           if (history && history.length > 0) {
             // Remove empty state
             if (emptyState) {
@@ -1086,6 +1271,25 @@
         }
       }
 
+      function renderEmptyState() {
+        chatContainer.innerHTML = `
+          <div class="empty-state" id="emptyState">
+            <svg viewBox="0 0 512 416" xmlns="http://www.w3.org/2000/svg">
+              <path d="M181.33 266.143c0-11.497 9.32-20.818 20.818-20.818 11.498 0 20.819 9.321 20.819 20.818v38.373c0 11.497-9.321 20.818-20.819 20.818-11.497 0-20.818-9.32-20.818-20.818v-38.373zM308.807 245.325c-11.477 0-20.798 9.321-20.798 20.818v38.373c0 11.497 9.32 20.818 20.798 20.818 11.497 0 20.818-9.32 20.818-20.818v-38.373c0-11.497-9.32-20.818-20.818-20.818z" />
+              <path d="M512.002 246.393v57.384c-.02 7.411-3.696 14.638-9.67 19.011C431.767 374.444 344.695 416 256 416c-98.138 0-196.379-56.542-246.33-93.21-5.975-4.374-9.65-11.6-9.671-19.012v-57.384a35.347 35.347 0 016.857-20.922l15.583-21.085c8.336-11.312 20.757-14.31 33.98-14.31 4.988-56.953 16.794-97.604 45.024-127.354C155.194 5.77 226.56 0 256 0c29.441 0 100.807 5.77 154.557 62.722 28.19 29.75 40.036 70.401 45.025 127.354 13.263 0 25.602 2.936 33.958 14.31l15.583 21.127c4.476 6.077 6.878 13.345 6.878 20.88zm-97.666-26.075c-.677-13.058-11.292-18.19-22.338-21.824-11.64 7.309-25.848 10.183-39.46 10.183-14.454 0-41.432-3.47-63.872-25.869-5.667-5.625-9.527-14.454-12.155-24.247a212.902 212.902 0 00-20.469-1.088c-6.098 0-13.099.349-20.551 1.088-2.628 9.793-6.509 18.622-12.155 24.247-22.4 22.4-49.418 25.87-63.872 25.87-13.612 0-27.86-2.855-39.501-10.184-11.005 3.613-21.558 8.828-22.277 21.824-1.17 24.555-1.272 49.11-1.375 73.645-.041 12.318-.082 24.658-.288 36.976.062 7.166 4.374 13.818 10.882 16.774 52.97 24.124 103.045 36.278 149.137 36.278 46.01 0 96.085-12.154 149.014-36.278 6.508-2.956 10.84-9.608 10.881-16.774.637-36.832.124-73.809-1.642-110.62h.041z" />
+            </svg>
+            <p>Ask me anything</p>
+          </div>
+        `;
+        emptyState = document.getElementById("emptyState");
+      }
+
+      function setSessionBadge(title) {
+        const t = title || "Chat";
+        sessionBadge.textContent = t;
+        sessionBadge.title = t;
+      }
+
       async function bootstrap() {
         input.disabled = true;
         sendBtn.disabled = true;
@@ -1093,6 +1297,12 @@
         markdownInitPromise = initMarkdown();
         await markdownInitPromise;
         await loadConfig();
+        try {
+          activeSession = await ipcRenderer.invoke("get-active-session");
+          setSessionBadge(activeSession.title);
+        } catch (e) {
+          // ignore
+        }
         await loadChatHistory();
 
         input.disabled = false;
@@ -1131,7 +1341,7 @@
 
         // Persist to database (unless loading from history)
         if (persist && (type === "user" || type === "assistant" || type === "error")) {
-          ipcRenderer.invoke("add-chat-message", type, content).catch(console.error);
+          ipcRenderer.invoke("add-chat-message", type, content, activeSession.id || undefined).catch(console.error);
         }
 
         return msg;
@@ -1153,6 +1363,10 @@
 
       const slashCommands = [
         { command: "/help", description: "Show commands, features, and examples" },
+        { command: "/new", description: "Start a new chat session" },
+        { command: "/sessions", description: "Open chat sessions" },
+        { command: "/rename", description: "Rename current chat (usage: /rename My Chat)" },
+        { command: "/switch", description: "Switch chat (usage: /switch 3 or /switch My)" },
       ];
 
       function renderCommandHint(items) {
@@ -1209,6 +1423,10 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
 
 ## Slash Commands
 - \`/help\` — Show commands, features, and examples
+- \`/new\` — Start a new chat session
+- \`/sessions\` — Open chat sessions
+- \`/rename <title>\` — Rename the current chat session
+- \`/switch <id|title>\` — Switch to another chat session
 
 ## Chat & AI
 - Ask questions or request help: “Explain this error”, “Summarize these notes…”
@@ -1243,11 +1461,142 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
 `;
       }
 
+      async function switchToSession(sessionId) {
+        const session = await ipcRenderer.invoke("set-active-session", sessionId);
+        activeSession = session;
+        setSessionBadge(activeSession.title);
+        renderEmptyState();
+        await loadChatHistory();
+      }
+
+      async function createAndSwitchSession(title) {
+        const session = await ipcRenderer.invoke("create-session", title);
+        activeSession = session;
+        setSessionBadge(activeSession.title);
+        renderEmptyState();
+        await loadChatHistory();
+      }
+
+      async function showSessions() {
+        const overlay = document.createElement("div");
+        overlay.className = "sessions-overlay";
+        overlay.tabIndex = -1;
+        overlay.innerHTML = `
+          <div class="sessions-panel">
+            <div class="sessions-header">
+              <h2>Chats</h2>
+              <button class="settings-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="sessions-actions">
+              <button class="sessions-btn primary" id="newChatBtn">New chat</button>
+              <button class="sessions-btn" id="refreshChatsBtn">Refresh</button>
+            </div>
+            <div class="sessions-list" id="sessionsList"></div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+        overlay.focus();
+
+        const closeBtn = overlay.querySelector(".settings-close");
+        const listEl = overlay.querySelector("#sessionsList");
+        const newChatBtn = overlay.querySelector("#newChatBtn");
+        const refreshBtn = overlay.querySelector("#refreshChatsBtn");
+
+        const close = () => overlay.remove();
+        closeBtn.onclick = close;
+        overlay.onclick = (e) => {
+          if (e.target === overlay) close();
+        };
+
+        function formatTimestamp(ts) {
+          if (!ts) return "";
+          const iso = String(ts).includes("T") ? String(ts) : String(ts).replace(" ", "T");
+          const d = new Date(iso);
+          if (Number.isNaN(d.getTime())) return String(ts);
+          const diff = Date.now() - d.getTime();
+          if (diff < 60 * 1000) return "just now";
+          if (diff < 60 * 60 * 1000) return `${Math.round(diff / (60 * 1000))}m ago`;
+          if (diff < 24 * 60 * 60 * 1000) return `${Math.round(diff / (60 * 60 * 1000))}h ago`;
+          return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        }
+
+        async function renderList() {
+          const sessions = await ipcRenderer.invoke("list-sessions", 50);
+          listEl.innerHTML = sessions
+            .map((s) => {
+              const active = s.id === activeSession.id ? "active" : "";
+              const meta = formatTimestamp(s.last_message_at || s.updated_at || s.created_at || "");
+              return `
+                <div class="session-item ${active}" data-session-id="${s.id}">
+                  <div class="session-item-main" data-action="switch" title="${s.title}">
+                    <div class="session-item-title">${s.title}</div>
+                    <div class="session-item-meta">#${s.id}${meta ? " • " + meta : ""}</div>
+                  </div>
+                  <div class="session-item-actions">
+                    <button class="session-icon-btn" data-action="rename" title="Rename">✎</button>
+                    <button class="session-icon-btn" data-action="delete" title="Delete">🗑️</button>
+                  </div>
+                </div>
+              `;
+            })
+            .join("");
+
+          listEl.querySelectorAll("[data-session-id]").forEach((row) => {
+            const id = Number.parseInt(row.getAttribute("data-session-id"), 10);
+            row.querySelectorAll("[data-action]").forEach((el) => {
+              el.addEventListener("click", async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const action = el.getAttribute("data-action");
+                if (action === "switch") {
+                  await switchToSession(id);
+                  close();
+                } else if (action === "rename") {
+                  const current = row.querySelector(".session-item-title")?.textContent || "Chat";
+                  const next = prompt("Rename chat", current);
+                  if (next && next.trim()) {
+                    await ipcRenderer.invoke("rename-session", id, next.trim());
+                    if (id === activeSession.id) {
+                      activeSession.title = next.trim();
+                      setSessionBadge(activeSession.title);
+                    }
+                    await renderList();
+                  }
+                } else if (action === "delete") {
+                  if (confirm("Delete this chat? This will remove its messages.")) {
+                    await ipcRenderer.invoke("delete-session", id);
+                    activeSession = await ipcRenderer.invoke("get-active-session");
+                    setSessionBadge(activeSession.title);
+                    renderEmptyState();
+                    await loadChatHistory();
+                    await renderList();
+                  }
+                }
+              });
+            });
+          });
+        }
+
+        newChatBtn.onclick = async () => {
+          await createAndSwitchSession();
+          close();
+        };
+        refreshBtn.onclick = renderList;
+
+        overlay.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") close();
+        });
+
+        await renderList();
+      }
+
       function handleSlashCommand(rawPrompt) {
         const trimmed = rawPrompt.trim();
         if (!trimmed.startsWith("/")) return false;
 
-        const command = trimmed.slice(1).trim().split(/\s+/)[0]?.toLowerCase();
+        const parts = trimmed.slice(1).trim().split(/\s+/);
+        const command = parts[0]?.toLowerCase();
+        const args = parts.slice(1);
         if (!command) {
           addMessage("Available commands: " + slashCommands.map((c) => c.command).join(", ") + "\n\nTry `/help`.", "assistant");
           return true;
@@ -1255,6 +1604,57 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
 
         if (command === "help") {
           addMessage(getHelpMarkdown(), "assistant");
+          return true;
+        }
+
+        if (command === "sessions") {
+          showSessions().catch(console.error);
+          return true;
+        }
+
+        if (command === "new") {
+          createAndSwitchSession().catch((e) => addMessage(`Error: ${e.message || e}`, "error"));
+          return true;
+        }
+
+        if (command === "rename") {
+          const title = args.join(" ").trim();
+          if (!title) {
+            const next = prompt("Rename chat", activeSession.title || "Chat");
+            if (next && next.trim()) {
+              ipcRenderer.invoke("rename-session", activeSession.id, next.trim()).then(() => {
+                activeSession.title = next.trim();
+                setSessionBadge(activeSession.title);
+              });
+            }
+            return true;
+          }
+          ipcRenderer.invoke("rename-session", activeSession.id, title).then(() => {
+            activeSession.title = title;
+            setSessionBadge(activeSession.title);
+          });
+          return true;
+        }
+
+        if (command === "switch") {
+          const target = args.join(" ").trim();
+          if (!target) {
+            addMessage("Usage: `/switch 3` or `/switch My Chat`", "assistant");
+            return true;
+          }
+          const asId = Number.parseInt(target, 10);
+          if (!Number.isNaN(asId) && asId > 0) {
+            switchToSession(asId).catch((e) => addMessage(`Error: ${e.message || e}`, "error"));
+            return true;
+          }
+          ipcRenderer.invoke("list-sessions", 50).then((sessions) => {
+            const match = sessions.find((s) => (s.title || "").toLowerCase().startsWith(target.toLowerCase()));
+            if (!match) {
+              addMessage(`No chat found matching "${target}".`, "error");
+              return;
+            }
+            switchToSession(match.id).catch((e) => addMessage(`Error: ${e.message || e}`, "error"));
+          });
           return true;
         }
 
@@ -1290,7 +1690,7 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         showTypingIndicator();
 
         try {
-          const result = await ipcRenderer.invoke("chat", prompt);
+          const result = await ipcRenderer.invoke("chat", prompt, activeSession.id || undefined);
           hideTypingIndicator();
 
           if (result.success) {
@@ -1478,21 +1878,15 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         showSettings();
       });
 
+      sessionBadge.addEventListener("click", () => {
+        showSessions().catch(console.error);
+      });
+
       // Clear chat
       clearBtn.addEventListener("click", async () => {
-        // Clear from database
-        await ipcRenderer.invoke("clear-chat-history");
-        
-        chatContainer.innerHTML = `
-          <div class="empty-state" id="emptyState">
-            <svg viewBox="0 0 512 416" xmlns="http://www.w3.org/2000/svg">
-              <path d="M181.33 266.143c0-11.497 9.32-20.818 20.818-20.818 11.498 0 20.819 9.321 20.819 20.818v38.373c0 11.497-9.321 20.818-20.819 20.818-11.497 0-20.818-9.32-20.818-20.818v-38.373zM308.807 245.325c-11.477 0-20.798 9.321-20.798 20.818v38.373c0 11.497 9.32 20.818 20.798 20.818 11.497 0 20.818-9.32 20.818-20.818v-38.373c0-11.497-9.32-20.818-20.818-20.818z" />
-              <path d="M512.002 246.393v57.384c-.02 7.411-3.696 14.638-9.67 19.011C431.767 374.444 344.695 416 256 416c-98.138 0-196.379-56.542-246.33-93.21-5.975-4.374-9.65-11.6-9.671-19.012v-57.384a35.347 35.347 0 016.857-20.922l15.583-21.085c8.336-11.312 20.757-14.31 33.98-14.31 4.988-56.953 16.794-97.604 45.024-127.354C155.194 5.77 226.56 0 256 0c29.441 0 100.807 5.77 154.557 62.722 28.19 29.75 40.036 70.401 45.025 127.354 13.263 0 25.602 2.936 33.958 14.31l15.583 21.127c4.476 6.077 6.878 13.345 6.878 20.88zm-97.666-26.075c-.677-13.058-11.292-18.19-22.338-21.824-11.64 7.309-25.848 10.183-39.46 10.183-14.454 0-41.432-3.47-63.872-25.869-5.667-5.625-9.527-14.454-12.155-24.247a212.902 212.902 0 00-20.469-1.088c-6.098 0-13.099.349-20.551 1.088-2.628 9.793-6.509 18.622-12.155 24.247-22.4 22.4-49.418 25.87-63.872 25.87-13.612 0-27.86-2.855-39.501-10.184-11.005 3.613-21.558 8.828-22.277 21.824-1.17 24.555-1.272 49.11-1.375 73.645-.041 12.318-.082 24.658-.288 36.976.062 7.166 4.374 13.818 10.882 16.774 52.97 24.124 103.045 36.278 149.137 36.278 46.01 0 96.085-12.154 149.014-36.278 6.508-2.956 10.84-9.608 10.881-16.774.637-36.832.124-73.809-1.642-110.62h.041z" />
-            </svg>
-            <p>Ask me anything</p>
-          </div>
-        `;
-        emptyState = document.getElementById("emptyState");
+        if (!confirm("Clear messages in this chat?")) return;
+        await ipcRenderer.invoke("clear-chat-history", activeSession.id || undefined);
+        renderEmptyState();
         input.focus();
       });
 
