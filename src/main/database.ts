@@ -42,11 +42,21 @@ function getSingleNumber(database: SqlJsDatabase, sql: string, params: any[] = [
   return null;
 }
 
+function formatSessionTitleFromTimestamp(date: Date = new Date()): string {
+  // Example: "Jan 28, 1:23 AM"
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function ensureDefaultChatSession(database: SqlJsDatabase): number {
   const existing = getSingleNumber(database, "SELECT id FROM chat_sessions ORDER BY id ASC LIMIT 1");
   if (existing) return existing;
 
-  database.run("INSERT INTO chat_sessions (title) VALUES (?)", ["Default"]);
+  database.run("INSERT INTO chat_sessions (title) VALUES (?)", [formatSessionTitleFromTimestamp()]);
   saveDb();
   return getSingleNumber(database, "SELECT last_insert_rowid()") || 1;
 }
@@ -278,7 +288,7 @@ export function listChatSessions(limit: number = 50): ChatSession[] {
 
 export function createChatSession(title?: string): number {
   const database = getDb();
-  const finalTitle = (title && title.trim()) ? title.trim() : "New chat";
+  const finalTitle = (title && title.trim()) ? title.trim() : formatSessionTitleFromTimestamp();
   database.run("INSERT INTO chat_sessions (title) VALUES (?)", [finalTitle]);
   saveDb();
   const id = getSingleNumber(database, "SELECT last_insert_rowid()") || 0;

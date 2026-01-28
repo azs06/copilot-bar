@@ -86,7 +86,7 @@
       .header-meta {
         justify-content: flex-start;
         gap: 8px;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
       }
 
       .header-title {
@@ -117,10 +117,11 @@
         padding: 5px 10px;
         background: var(--bg-tertiary);
         color: var(--text-secondary);
-        border: 1px solid var(--border-color);
+        border: 1px solid transparent;
         border-radius: 999px;
         font-weight: 500;
         max-width: 210px;
+        min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -128,11 +129,42 @@
 
       button.pill {
         cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .pill-label {
+        display: block;
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .pill-caret {
+        flex: 0 0 auto;
+        color: var(--text-secondary);
+        font-size: 10px;
       }
 
       button.pill:hover {
         color: var(--text-primary);
         background: var(--bg-secondary);
+      }
+
+      #sessionBadge {
+        background: var(--bg-secondary);
+        border-color: var(--border-color);
+        color: var(--text-primary);
+        flex: 1 1 auto;
+      }
+
+      #modelBadge {
+        background: var(--bg-tertiary);
+        border-color: transparent;
+        color: var(--text-secondary);
       }
 
       .header-actions {
@@ -1107,6 +1139,71 @@
         background: var(--bg-tertiary);
         color: var(--text-primary);
       }
+
+      /* Simple modal (used for rename, etc.) */
+      .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 110;
+      }
+
+      .modal-panel {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 16px;
+        width: 320px;
+        max-width: 92%;
+      }
+
+      .modal-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 10px;
+      }
+
+      .modal-input {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 13px;
+        font-family: inherit;
+        outline: none;
+      }
+
+      .modal-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        margin-top: 12px;
+      }
+
+      .modal-btn {
+        padding: 8px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .modal-btn.primary {
+        background: var(--accent-color);
+        border-color: var(--accent-color);
+        color: white;
+      }
     </style>
   </head>
   <body>
@@ -1133,7 +1230,10 @@
         </div>
       </div>
       <div class="header-row header-meta">
-        <button class="pill" id="sessionBadge" type="button" title="Chats">Chat</button>
+        <button class="pill" id="sessionBadge" type="button" title="Sessions">
+          <span class="pill-label" id="sessionBadgeLabel">Sessions</span>
+          <span class="pill-caret" aria-hidden="true">▾</span>
+        </button>
         <span class="pill" id="modelBadge">loading...</span>
       </div>
     </div>
@@ -1230,6 +1330,7 @@
       const screenshotBtn = document.getElementById("screenshotBtn");
       const modelBadge = document.getElementById("modelBadge");
       const sessionBadge = document.getElementById("sessionBadge");
+      const sessionBadgeLabel = document.getElementById("sessionBadgeLabel");
 
       let isLoading = false;
       let activeSession = { id: null, title: "Chat" };
@@ -1285,9 +1386,62 @@
       }
 
       function setSessionBadge(title) {
-        const t = title || "Chat";
-        sessionBadge.textContent = t;
-        sessionBadge.title = t;
+        const t = (title && String(title).trim()) ? String(title).trim() : "";
+        const label = t ? `Sessions · ${t}` : "Sessions";
+        sessionBadgeLabel.textContent = label;
+        sessionBadge.title = t ? `Sessions: ${t}` : "Sessions";
+      }
+
+      function escapeHtml(unsafe) {
+        return String(unsafe ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function openTextModal({ title, initialValue, placeholder, confirmText }) {
+        return new Promise((resolve) => {
+          const overlay = document.createElement("div");
+          overlay.className = "modal-overlay";
+          overlay.tabIndex = -1;
+          overlay.innerHTML = `
+            <div class="modal-panel">
+              <div class="modal-title">${escapeHtml(title)}</div>
+              <input class="modal-input" id="modalInput" type="text" />
+              <div class="modal-actions">
+                <button class="modal-btn" id="modalCancel" type="button">Cancel</button>
+                <button class="modal-btn primary" id="modalConfirm" type="button">${escapeHtml(confirmText || "Save")}</button>
+              </div>
+            </div>
+          `;
+          document.body.appendChild(overlay);
+
+          const inputEl = overlay.querySelector("#modalInput");
+          const cancelBtn = overlay.querySelector("#modalCancel");
+          const confirmBtn = overlay.querySelector("#modalConfirm");
+
+          inputEl.value = initialValue || "";
+          inputEl.placeholder = placeholder || "";
+          inputEl.focus();
+          inputEl.select();
+
+          const close = (value) => {
+            overlay.remove();
+            resolve(value);
+          };
+
+          cancelBtn.onclick = () => close(null);
+          overlay.onclick = (e) => {
+            if (e.target === overlay) close(null);
+          };
+          confirmBtn.onclick = () => close(inputEl.value);
+          overlay.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") close(null);
+            if (e.key === "Enter") close(inputEl.value);
+          });
+        });
       }
 
       async function bootstrap() {
@@ -1526,10 +1680,11 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
             .map((s) => {
               const active = s.id === activeSession.id ? "active" : "";
               const meta = formatTimestamp(s.last_message_at || s.updated_at || s.created_at || "");
+              const safeTitle = escapeHtml(s.title || "Chat");
               return `
                 <div class="session-item ${active}" data-session-id="${s.id}">
-                  <div class="session-item-main" data-action="switch" title="${s.title}">
-                    <div class="session-item-title">${s.title}</div>
+                  <div class="session-item-main" data-action="switch" title="${safeTitle}">
+                    <div class="session-item-title">${safeTitle}</div>
                     <div class="session-item-meta">#${s.id}${meta ? " • " + meta : ""}</div>
                   </div>
                   <div class="session-item-actions">
@@ -1553,7 +1708,12 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
                   close();
                 } else if (action === "rename") {
                   const current = row.querySelector(".session-item-title")?.textContent || "Chat";
-                  const next = prompt("Rename chat", current);
+                  const next = await openTextModal({
+                    title: "Rename session",
+                    initialValue: current,
+                    placeholder: "Session name",
+                    confirmText: "Rename",
+                  });
                   if (next && next.trim()) {
                     await ipcRenderer.invoke("rename-session", id, next.trim());
                     if (id === activeSession.id) {
@@ -1590,7 +1750,7 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         await renderList();
       }
 
-      function handleSlashCommand(rawPrompt) {
+      async function handleSlashCommand(rawPrompt) {
         const trimmed = rawPrompt.trim();
         if (!trimmed.startsWith("/")) return false;
 
@@ -1618,9 +1778,18 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         }
 
         if (command === "rename") {
+          if (!activeSession.id) {
+            addMessage("No active session yet. Try again in a moment.", "error");
+            return true;
+          }
           const title = args.join(" ").trim();
           if (!title) {
-            const next = prompt("Rename chat", activeSession.title || "Chat");
+            const next = await openTextModal({
+              title: "Rename session",
+              initialValue: activeSession.title || "",
+              placeholder: "Session name",
+              confirmText: "Rename",
+            });
             if (next && next.trim()) {
               ipcRenderer.invoke("rename-session", activeSession.id, next.trim()).then(() => {
                 activeSession.title = next.trim();
@@ -1674,7 +1843,7 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
           addMessage(prompt, "user");
           input.value = "";
           input.style.height = "auto";
-          handleSlashCommand(prompt);
+          await handleSlashCommand(prompt);
           input.focus();
           return;
         }
