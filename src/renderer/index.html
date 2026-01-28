@@ -311,6 +311,59 @@
         border-top: 1px solid var(--border-color);
         display: flex;
         gap: 8px;
+        align-items: flex-end;
+      }
+
+      .input-stack {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .command-hint {
+        display: none;
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .command-hint-header {
+        padding: 8px 10px;
+        font-size: 11px;
+        color: var(--text-secondary);
+        border-bottom: 1px solid var(--border-color);
+        background: var(--bg-tertiary);
+      }
+
+      .command-hint-item {
+        width: 100%;
+        text-align: left;
+        border: none;
+        background: transparent;
+        padding: 8px 10px;
+        cursor: pointer;
+        color: var(--text-primary);
+        font-size: 12px;
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+      }
+
+      .command-hint-item:hover {
+        background: var(--bg-tertiary);
+      }
+
+      .command-hint-item code {
+        font-family: "SF Mono", "Monaco", "Menlo", monospace;
+        font-size: 12px;
+        color: var(--accent-color);
+      }
+
+      .command-hint-desc {
+        color: var(--text-secondary);
+        font-size: 11px;
       }
 
       textarea {
@@ -348,6 +401,8 @@
         display: flex;
         align-items: center;
         gap: 6px;
+        height: 40px;
+        align-self: flex-end;
       }
 
       .send-btn:hover {
@@ -915,48 +970,77 @@
     </div>
 
     <div class="input-area">
-      <textarea
-        id="input"
-        placeholder="Ask Copilot..."
-        rows="1"
-        autofocus
-      ></textarea>
+      <div class="input-stack">
+        <textarea
+          id="input"
+          placeholder="Ask Copilot... (try /help)"
+          rows="1"
+          autofocus
+        ></textarea>
+        <div class="command-hint" id="commandHint"></div>
+      </div>
       <button class="send-btn" id="sendBtn">Send</button>
     </div>
 
     <script>
       const { ipcRenderer } = require("electron");
 
-      // Load marked and highlight.js with error handling
-      let marked, hljs;
-      try {
-        marked = require("marked").marked;
-        hljs = require("highlight.js");
+      // Markdown rendering
+      let marked = {
+        parse: (text) =>
+          text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\n/g, "<br>"),
+      };
+      let hljs = null;
+      let markdownInitPromise = null;
 
-        // Configure marked with syntax highlighting
-        marked.setOptions({
-          highlight: function (code, lang) {
-            if (lang && hljs.getLanguage(lang)) {
-              try {
-                return hljs.highlight(code, { language: lang }).value;
-              } catch (e) {}
-            }
-            return hljs.highlightAuto(code).value;
-          },
-          breaks: true,
-          gfm: true,
-        });
-        console.log("Markdown libraries loaded");
-      } catch (err) {
-        console.error("Failed to load markdown libraries:", err);
-        // Fallback: marked will just return plain text
-        marked = { parse: (text) => text.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>") };
+      async function initMarkdown() {
+        try {
+          const { pathToFileURL } = require("node:url");
+
+          const markedPath = require.resolve("marked");
+          const hljsPath = require.resolve("highlight.js");
+
+          const markedModule = await import(pathToFileURL(markedPath).href);
+          const hljsModule = await import(pathToFileURL(hljsPath).href);
+
+          const markedFn = markedModule.marked ?? markedModule.default ?? markedModule;
+          const hljsLib = hljsModule.default ?? hljsModule;
+
+          if (typeof markedFn?.setOptions === "function") {
+            markedFn.setOptions({
+              highlight: function (code, lang) {
+                if (hljsLib && lang && typeof hljsLib.getLanguage === "function" && hljsLib.getLanguage(lang)) {
+                  try {
+                    return hljsLib.highlight(code, { language: lang }).value;
+                  } catch (e) {}
+                }
+                if (hljsLib && typeof hljsLib.highlightAuto === "function") {
+                  return hljsLib.highlightAuto(code).value;
+                }
+                return code;
+              },
+              breaks: true,
+              gfm: true,
+            });
+          }
+
+          marked = markedFn;
+          hljs = hljsLib;
+          console.log("Markdown libraries loaded");
+        } catch (err) {
+          console.error("Failed to load markdown libraries:", err);
+        }
       }
 
       const input = document.getElementById("input");
       const sendBtn = document.getElementById("sendBtn");
       const chatContainer = document.getElementById("chatContainer");
       let emptyState = document.getElementById("emptyState");
+      const commandHint = document.getElementById("commandHint");
       const configBtn = document.getElementById("configBtn");
       const clearBtn = document.getElementById("clearBtn");
       const quitBtn = document.getElementById("quitBtn");
@@ -1002,8 +1086,19 @@
         }
       }
 
-      loadConfig();
-      loadChatHistory();
+      async function bootstrap() {
+        input.disabled = true;
+        sendBtn.disabled = true;
+
+        markdownInitPromise = initMarkdown();
+        await markdownInitPromise;
+        await loadConfig();
+        await loadChatHistory();
+
+        input.disabled = false;
+        sendBtn.disabled = false;
+        input.focus();
+      }
 
       function addMessage(content, type, persist = true) {
         if (emptyState) {
@@ -1017,7 +1112,13 @@
         // Render markdown for assistant messages, plain text for user
         if (type === "assistant" && marked) {
           try {
-            msg.innerHTML = typeof marked === "function" ? marked(content) : marked.parse(content);
+            if (typeof marked?.parse === "function") {
+              msg.innerHTML = marked.parse(content);
+            } else if (typeof marked === "function") {
+              msg.innerHTML = marked(content);
+            } else {
+              msg.innerHTML = content;
+            }
           } catch (e) {
             msg.textContent = content;
           }
@@ -1050,9 +1151,133 @@
         if (indicator) indicator.remove();
       }
 
+      const slashCommands = [
+        { command: "/help", description: "Show commands, features, and examples" },
+      ];
+
+      function renderCommandHint(items) {
+        if (!items || items.length === 0) {
+          commandHint.style.display = "none";
+          commandHint.innerHTML = "";
+          return;
+        }
+
+        commandHint.style.display = "block";
+        commandHint.innerHTML = `
+          <div class="command-hint-header">Slash commands (Tab to autocomplete)</div>
+          ${items
+            .map(
+              (c) => `
+            <button class="command-hint-item" type="button" data-command="${c.command}">
+              <code>${c.command}</code>
+              <span class="command-hint-desc">${c.description}</span>
+            </button>
+          `
+            )
+            .join("")}
+        `;
+
+        commandHint.querySelectorAll("[data-command]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const cmd = btn.getAttribute("data-command");
+            if (!cmd) return;
+            input.value = cmd;
+            input.focus();
+            updateCommandHint();
+          });
+        });
+      }
+
+      function updateCommandHint() {
+        const value = input.value;
+        if (!value.startsWith("/")) {
+          renderCommandHint([]);
+          return;
+        }
+
+        const query = value.slice(1).trim().toLowerCase();
+        const matches = slashCommands
+          .filter((c) => c.command.slice(1).toLowerCase().startsWith(query))
+          .slice(0, 8);
+        renderCommandHint(matches.length ? matches : slashCommands);
+      }
+
+      function getHelpMarkdown() {
+        return `# /help
+
+Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show widgets**.
+
+## Slash Commands
+- \`/help\` — Show commands, features, and examples
+
+## Chat & AI
+- Ask questions or request help: “Explain this error”, “Summarize these notes…”
+- Markdown rendering: code blocks and formatting render automatically.
+- Chat history persists across sessions.
+
+## System Controls (macOS)
+- Volume: “Set volume to 50%”, “Mute my computer”
+- Brightness (optional): \`brew install brightness\`, then “Set brightness to 80%”
+- Do Not Disturb / Focus: “Turn on do not disturb”, “Is focus mode enabled?”
+- Wi‑Fi: “Turn off WiFi”, “What network am I connected to?”, “Show my saved networks”
+- App launcher: “Open Safari”, “Open Terminal”
+- Shell: “Run \`ls -la ~/Documents\`”, “Show disk usage”
+
+## Widgets & Productivity
+- Timers: “Start a timer”, “Set a 5 minute countdown”, “Start a Pomodoro”
+- World clock: “What time is it in Tokyo?”, “Show me a world clock”
+- Unit converter: “Convert 100 pounds to kilograms”, “Open the temperature converter”
+- Wi‑Fi widget: “Show my saved networks”
+
+## Screenshot Analysis
+- Use the 📸 button or type: “Take a screenshot” / “Capture my screen and tell me what you see”
+- If configured, screenshots can be uploaded via S3-compatible storage (\`.env.example\`).
+
+## Reminders
+- “Remind me to take a break in 30 minutes”
+- “What reminders do I have?”
+
+## Settings & Shortcuts
+- Open settings (⚙️) to change model, theme, and global shortcut.
+- Default shortcut: \`Cmd+Shift+T\` (macOS) / \`Ctrl+Shift+T\` (Windows/Linux)
+`;
+      }
+
+      function handleSlashCommand(rawPrompt) {
+        const trimmed = rawPrompt.trim();
+        if (!trimmed.startsWith("/")) return false;
+
+        const command = trimmed.slice(1).trim().split(/\s+/)[0]?.toLowerCase();
+        if (!command) {
+          addMessage("Available commands: " + slashCommands.map((c) => c.command).join(", ") + "\n\nTry `/help`.", "assistant");
+          return true;
+        }
+
+        if (command === "help") {
+          addMessage(getHelpMarkdown(), "assistant");
+          return true;
+        }
+
+        addMessage(`Unknown command: /${command}. Try /help.`, "error");
+        return true;
+      }
+
       async function sendMessage() {
         const prompt = input.value.trim();
         if (!prompt || isLoading) return;
+
+        // Always hide slash command hint on send
+        renderCommandHint([]);
+
+        // Slash commands (handled locally; no Copilot call required)
+        if (prompt.startsWith("/")) {
+          addMessage(prompt, "user");
+          input.value = "";
+          input.style.height = "auto";
+          handleSlashCommand(prompt);
+          input.focus();
+          return;
+        }
 
         isLoading = true;
         sendBtn.disabled = true;
@@ -1087,6 +1312,23 @@
       sendBtn.addEventListener("click", sendMessage);
 
       input.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          // Close slash command hint (and other transient UI)
+          renderCommandHint([]);
+          return;
+        }
+
+        if (e.key === "Tab" && input.value.startsWith("/")) {
+          const query = input.value.slice(1).trim().toLowerCase();
+          const first = slashCommands.find((c) => c.command.slice(1).toLowerCase().startsWith(query));
+          if (first) {
+            e.preventDefault();
+            input.value = first.command;
+            updateCommandHint();
+            return;
+          }
+        }
+
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
           sendMessage();
@@ -1097,7 +1339,19 @@
       input.addEventListener("input", () => {
         input.style.height = "auto";
         input.style.height = Math.min(input.scrollHeight, 120) + "px";
+        updateCommandHint();
       });
+
+      // Hide hint when focus is lost
+      input.addEventListener("blur", () => {
+        setTimeout(() => renderCommandHint([]), 100);
+      });
+
+      input.addEventListener("focus", () => {
+        updateCommandHint();
+      });
+
+      bootstrap();
 
       // Settings panel
       let currentConfig = {};
