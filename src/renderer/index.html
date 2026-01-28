@@ -4,6 +4,53 @@
     <meta charset="UTF-8" />
     <title>Copilot Bar</title>
     <style>
+      :root {
+        /* Dark theme (default) */
+        --bg-primary: #1a1a1a;
+        --bg-secondary: #252525;
+        --bg-tertiary: #2a2a2a;
+        --bg-input: #252525;
+        --border-color: #333;
+        --text-primary: #e0e0e0;
+        --text-secondary: #888;
+        --text-muted: #666;
+        --accent-color: #0066ff;
+        --accent-hover: #0052cc;
+        --user-message-bg: #0066ff;
+        --user-message-text: white;
+        --assistant-message-bg: #2a2a2a;
+        --code-bg: #1a1a1a;
+        --error-bg: #4a1c1c;
+        --error-text: #ff6b6b;
+        --tool-bg: #2a2a1a;
+        --tool-text: #f0a020;
+        --tool-complete-bg: #1a2a1a;
+        --tool-complete-text: #40a040;
+      }
+
+      [data-theme="light"] {
+        --bg-primary: #ffffff;
+        --bg-secondary: #f5f5f5;
+        --bg-tertiary: #ebebeb;
+        --bg-input: #ffffff;
+        --border-color: #ddd;
+        --text-primary: #1a1a1a;
+        --text-secondary: #666;
+        --text-muted: #999;
+        --accent-color: #0066ff;
+        --accent-hover: #0052cc;
+        --user-message-bg: #0066ff;
+        --user-message-text: white;
+        --assistant-message-bg: #f0f0f0;
+        --code-bg: #e8e8e8;
+        --error-bg: #ffe0e0;
+        --error-text: #cc0000;
+        --tool-bg: #fff8e0;
+        --tool-text: #996600;
+        --tool-complete-bg: #e0ffe0;
+        --tool-complete-text: #006600;
+      }
+
       * {
         box-sizing: border-box;
         margin: 0;
@@ -13,8 +60,8 @@
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
           sans-serif;
-        background: #1a1a1a;
-        color: #e0e0e0;
+        background: var(--bg-primary);
+        color: var(--text-primary);
         height: 100vh;
         display: flex;
         flex-direction: column;
@@ -25,7 +72,7 @@
         justify-content: space-between;
         align-items: center;
         padding: 12px 16px;
-        border-bottom: 1px solid #333;
+        border-bottom: 1px solid var(--border-color);
       }
 
       .header-left {
@@ -37,7 +84,7 @@
       .header h1 {
         font-size: 14px;
         font-weight: 600;
-        color: #fff;
+        color: var(--text-primary);
         display: flex;
         align-items: center;
         gap: 8px;
@@ -46,14 +93,14 @@
       .header h1 svg {
         width: 18px;
         height: 18px;
-        fill: #fff;
+        fill: var(--text-primary);
       }
 
       .model-badge {
         font-size: 10px;
         padding: 3px 8px;
-        background: #333;
-        color: #888;
+        background: var(--bg-tertiary);
+        color: var(--text-secondary);
         border-radius: 10px;
         font-weight: 500;
       }
@@ -66,7 +113,7 @@
       .config-btn {
         background: none;
         border: none;
-        color: #888;
+        color: var(--text-secondary);
         cursor: pointer;
         font-size: 14px;
         padding: 4px 8px;
@@ -74,8 +121,8 @@
       }
 
       .config-btn:hover {
-        color: #fff;
-        background: #333;
+        color: var(--text-primary);
+        background: var(--bg-tertiary);
       }
 
       .chat-container {
@@ -97,16 +144,16 @@
       }
 
       .message.user {
-        background: #0066ff;
-        color: white;
+        background: var(--user-message-bg);
+        color: var(--user-message-text);
         align-self: flex-end;
         border-bottom-right-radius: 4px;
         white-space: pre-wrap;
       }
 
       .message.assistant {
-        background: #2a2a2a;
-        color: #e0e0e0;
+        background: var(--assistant-message-bg);
+        color: var(--text-primary);
         align-self: flex-start;
         border-bottom-left-radius: 4px;
       }
@@ -121,7 +168,7 @@
       }
 
       .message.assistant code {
-        background: #1a1a1a;
+        background: var(--code-bg);
         padding: 2px 6px;
         border-radius: 4px;
         font-family: "SF Mono", "Monaco", "Menlo", monospace;
@@ -129,7 +176,7 @@
       }
 
       .message.assistant pre {
-        background: #1a1a1a;
+        background: var(--code-bg);
         padding: 12px;
         border-radius: 8px;
         overflow-x: auto;
@@ -157,7 +204,7 @@
       .message.assistant h2,
       .message.assistant h3 {
         margin: 12px 0 8px 0;
-        color: #fff;
+        color: var(--text-primary);
       }
 
       .message.assistant h1 { font-size: 16px; }
@@ -165,10 +212,10 @@
       .message.assistant h3 { font-size: 13px; }
 
       .message.assistant blockquote {
-        border-left: 3px solid #444;
+        border-left: 3px solid var(--border-color);
         padding-left: 12px;
         margin: 8px 0;
-        color: #aaa;
+        color: var(--text-secondary);
       }
 
       .message.assistant a {
@@ -181,7 +228,7 @@
       }
 
       .message.assistant strong {
-        color: #fff;
+        color: var(--text-primary);
       }
 
       .message.assistant table {
@@ -192,12 +239,12 @@
 
       .message.assistant th,
       .message.assistant td {
-        border: 1px solid #444;
+        border: 1px solid var(--border-color);
         padding: 6px 10px;
       }
 
       .message.assistant th {
-        background: #333;
+        background: var(--bg-tertiary);
       }
 
       /* Syntax highlighting (GitHub dark theme) */
@@ -216,9 +263,25 @@
       .hljs-type,
       .hljs-class { color: #7ee787; }
 
+      /* Light theme syntax highlighting */
+      [data-theme="light"] .hljs-keyword,
+      [data-theme="light"] .hljs-selector-tag,
+      [data-theme="light"] .hljs-built_in { color: #d73a49; }
+      [data-theme="light"] .hljs-string,
+      [data-theme="light"] .hljs-attr { color: #032f62; }
+      [data-theme="light"] .hljs-number,
+      [data-theme="light"] .hljs-literal { color: #005cc5; }
+      [data-theme="light"] .hljs-comment { color: #6a737d; }
+      [data-theme="light"] .hljs-function,
+      [data-theme="light"] .hljs-title { color: #6f42c1; }
+      [data-theme="light"] .hljs-variable,
+      [data-theme="light"] .hljs-params { color: #e36209; }
+      [data-theme="light"] .hljs-type,
+      [data-theme="light"] .hljs-class { color: #22863a; }
+
       .message.error {
-        background: #4a1c1c;
-        color: #ff6b6b;
+        background: var(--error-bg);
+        color: var(--error-text);
       }
 
       .empty-state {
@@ -227,7 +290,7 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        color: #666;
+        color: var(--text-muted);
         text-align: center;
         padding: 20px;
       }
@@ -235,7 +298,7 @@
       .empty-state svg {
         width: 48px;
         height: 48px;
-        fill: #444;
+        fill: var(--border-color);
         margin-bottom: 12px;
       }
 
@@ -245,7 +308,7 @@
 
       .input-area {
         padding: 12px 16px;
-        border-top: 1px solid #333;
+        border-top: 1px solid var(--border-color);
         display: flex;
         gap: 8px;
       }
@@ -253,10 +316,10 @@
       textarea {
         flex: 1;
         padding: 10px 12px;
-        border: 1px solid #333;
+        border: 1px solid var(--border-color);
         border-radius: 8px;
-        background: #252525;
-        color: #e0e0e0;
+        background: var(--bg-input);
+        color: var(--text-primary);
         font-size: 13px;
         resize: none;
         font-family: inherit;
@@ -266,12 +329,16 @@
 
       textarea:focus {
         outline: none;
-        border-color: #0066ff;
+        border-color: var(--accent-color);
+      }
+
+      textarea::placeholder {
+        color: var(--text-muted);
       }
 
       .send-btn {
         padding: 10px 16px;
-        background: #0066ff;
+        background: var(--accent-color);
         color: white;
         border: none;
         border-radius: 8px;
@@ -284,12 +351,12 @@
       }
 
       .send-btn:hover {
-        background: #0052cc;
+        background: var(--accent-hover);
       }
 
       .send-btn:disabled {
-        background: #333;
-        color: #666;
+        background: var(--bg-tertiary);
+        color: var(--text-muted);
         cursor: not-allowed;
       }
 
@@ -318,7 +385,7 @@
       .typing-indicator span {
         width: 6px;
         height: 6px;
-        background: #666;
+        background: var(--text-muted);
         border-radius: 50%;
         animation: bounce 1.4s infinite ease-in-out;
       }
@@ -344,9 +411,9 @@
 
       .tool-activity {
         font-size: 11px;
-        color: #f0a020;
+        color: var(--tool-text);
         padding: 6px 14px;
-        background: #2a2a1a;
+        background: var(--tool-bg);
         border-radius: 8px;
         margin: 4px 0;
         display: flex;
@@ -359,14 +426,14 @@
       }
 
       .tool-activity.complete {
-        color: #40a040;
-        background: #1a2a1a;
+        color: var(--tool-complete-text);
+        background: var(--tool-complete-bg);
       }
 
       /* Widget Styles */
       .widget {
-        background: #252525;
-        border: 1px solid #333;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
         border-radius: 12px;
         padding: 16px;
         margin: 8px 0;
@@ -375,7 +442,7 @@
 
       .widget-header {
         font-size: 11px;
-        color: #888;
+        color: var(--text-secondary);
         margin-bottom: 8px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
@@ -384,7 +451,7 @@
       .widget-display {
         font-size: 42px;
         font-family: "SF Mono", "Monaco", "Menlo", monospace;
-        color: #fff;
+        color: var(--text-primary);
         text-align: center;
         margin: 16px 0;
         font-weight: 300;
@@ -396,7 +463,7 @@
 
       .widget-status {
         font-size: 11px;
-        color: #888;
+        color: var(--text-secondary);
         text-align: center;
         margin-bottom: 12px;
       }
@@ -411,23 +478,24 @@
         padding: 8px 16px;
         border: none;
         border-radius: 6px;
-        background: #333;
-        color: #fff;
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
         cursor: pointer;
         font-size: 12px;
         transition: background 0.15s;
       }
 
       .widget-btn:hover {
-        background: #444;
+        background: var(--border-color);
       }
 
       .widget-btn.primary {
-        background: #0066ff;
+        background: var(--accent-color);
+        color: white;
       }
 
       .widget-btn.primary:hover {
-        background: #0052cc;
+        background: var(--accent-hover);
       }
 
       .widget-btn:disabled {
@@ -446,46 +514,46 @@
       .converter-input {
         flex: 1;
         padding: 8px 10px;
-        border: 1px solid #333;
+        border: 1px solid var(--border-color);
         border-radius: 6px;
-        background: #1a1a1a;
-        color: #fff;
+        background: var(--code-bg);
+        color: var(--text-primary);
         font-size: 14px;
         font-family: "SF Mono", monospace;
       }
 
       .converter-input:focus {
         outline: none;
-        border-color: #0066ff;
+        border-color: var(--accent-color);
       }
 
       .converter-select {
         padding: 8px 10px;
-        border: 1px solid #333;
+        border: 1px solid var(--border-color);
         border-radius: 6px;
-        background: #1a1a1a;
-        color: #fff;
+        background: var(--code-bg);
+        color: var(--text-primary);
         font-size: 12px;
         min-width: 100px;
       }
 
       .converter-select:focus {
         outline: none;
-        border-color: #0066ff;
+        border-color: var(--accent-color);
       }
 
       .converter-arrow {
-        color: #666;
+        color: var(--text-muted);
         font-size: 16px;
       }
 
       .converter-result {
         font-size: 18px;
         font-family: "SF Mono", monospace;
-        color: #0066ff;
+        color: var(--accent-color);
         text-align: center;
         padding: 8px;
-        background: #1a1a1a;
+        background: var(--code-bg);
         border-radius: 6px;
         margin-top: 8px;
       }
@@ -501,21 +569,21 @@
         padding: 4px 8px;
         border: none;
         border-radius: 4px;
-        background: #333;
-        color: #888;
+        background: var(--bg-tertiary);
+        color: var(--text-secondary);
         font-size: 10px;
         cursor: pointer;
         text-transform: uppercase;
       }
 
       .converter-tab:hover {
-        background: #444;
-        color: #fff;
+        background: var(--border-color);
+        color: var(--text-primary);
       }
 
       .converter-tab.active {
-        background: #0066ff;
-        color: #fff;
+        background: var(--accent-color);
+        color: white;
       }
 
       /* World Clock Widget */
@@ -530,7 +598,7 @@
         justify-content: space-between;
         align-items: center;
         padding: 8px 0;
-        border-bottom: 1px solid #333;
+        border-bottom: 1px solid var(--border-color);
       }
 
       .worldclock-city:last-child {
@@ -539,19 +607,114 @@
 
       .worldclock-city-name {
         font-size: 12px;
-        color: #888;
+        color: var(--text-secondary);
       }
 
       .worldclock-city-time {
         font-size: 18px;
         font-family: "SF Mono", "Monaco", "Menlo", monospace;
-        color: #fff;
+        color: var(--text-primary);
       }
 
       .worldclock-city-date {
         font-size: 10px;
-        color: #666;
+        color: var(--text-muted);
         text-align: right;
+      }
+
+      /* WiFi Widget */
+      .wifi-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px;
+        background: var(--code-bg);
+        border-radius: 8px;
+        margin-bottom: 12px;
+      }
+
+      .wifi-status-icon {
+        font-size: 24px;
+      }
+
+      .wifi-status-info {
+        flex: 1;
+      }
+
+      .wifi-status-label {
+        font-size: 11px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+      }
+
+      .wifi-status-network {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-primary);
+      }
+
+      .wifi-status-badge {
+        font-size: 10px;
+        padding: 3px 8px;
+        border-radius: 10px;
+        font-weight: 500;
+      }
+
+      .wifi-status-badge.connected {
+        background: #1a3a1a;
+        color: #40c040;
+      }
+
+      .wifi-status-badge.disconnected {
+        background: #3a2a1a;
+        color: #f0a020;
+      }
+
+      .wifi-status-badge.off {
+        background: #3a1a1a;
+        color: #ff6b6b;
+      }
+
+      [data-theme="light"] .wifi-status-badge.connected {
+        background: #e0ffe0;
+        color: #006600;
+      }
+
+      [data-theme="light"] .wifi-status-badge.disconnected {
+        background: #fff0e0;
+        color: #996600;
+      }
+
+      [data-theme="light"] .wifi-status-badge.off {
+        background: #ffe0e0;
+        color: #cc0000;
+      }
+
+      .wifi-networks-list {
+        max-height: 150px;
+        overflow-y: auto;
+      }
+
+      .wifi-network-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 12px;
+      }
+
+      .wifi-network-item:last-child {
+        border-bottom: none;
+      }
+
+      .wifi-network-item.current {
+        color: var(--accent-color);
+        font-weight: 500;
+      }
+
+      .wifi-network-icon {
+        font-size: 14px;
       }
 
       /* Settings Panel */
@@ -569,8 +732,8 @@
       }
 
       .settings-panel {
-        background: #252525;
-        border: 1px solid #333;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
         border-radius: 12px;
         padding: 20px;
         width: 340px;
@@ -587,13 +750,13 @@
       .settings-header h2 {
         font-size: 16px;
         font-weight: 600;
-        color: #fff;
+        color: var(--text-primary);
       }
 
       .settings-close {
         background: none;
         border: none;
-        color: #888;
+        color: var(--text-secondary);
         font-size: 20px;
         cursor: pointer;
         padding: 4px 8px;
@@ -601,8 +764,8 @@
       }
 
       .settings-close:hover {
-        color: #fff;
-        background: #333;
+        color: var(--text-primary);
+        background: var(--bg-tertiary);
       }
 
       .settings-row {
@@ -612,7 +775,7 @@
       .settings-row label {
         display: block;
         font-size: 12px;
-        color: #888;
+        color: var(--text-secondary);
         margin-bottom: 6px;
       }
 
@@ -620,10 +783,10 @@
       .settings-row select {
         width: 100%;
         padding: 10px 12px;
-        border: 1px solid #333;
+        border: 1px solid var(--border-color);
         border-radius: 6px;
-        background: #1a1a1a;
-        color: #e0e0e0;
+        background: var(--code-bg);
+        color: var(--text-primary);
         font-size: 13px;
         font-family: inherit;
       }
@@ -631,22 +794,22 @@
       .settings-row input:focus,
       .settings-row select:focus {
         outline: none;
-        border-color: #0066ff;
+        border-color: var(--accent-color);
       }
 
       .settings-hint {
         font-size: 11px;
-        color: #666;
+        color: var(--text-muted);
         margin-top: 4px;
       }
 
       .settings-row .shortcut-display {
         font-family: "SF Mono", monospace;
-        background: #1a1a1a;
+        background: var(--code-bg);
         padding: 8px 12px;
         border-radius: 6px;
         font-size: 12px;
-        color: #0066ff;
+        color: var(--accent-color);
         display: inline-block;
       }
 
@@ -666,21 +829,50 @@
       }
 
       .settings-btn.secondary {
-        background: #333;
-        color: #fff;
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
       }
 
       .settings-btn.secondary:hover {
-        background: #444;
+        background: var(--border-color);
       }
 
       .settings-btn.primary {
-        background: #0066ff;
-        color: #fff;
+        background: var(--accent-color);
+        color: white;
       }
 
       .settings-btn.primary:hover {
-        background: #0052cc;
+        background: var(--accent-hover);
+      }
+
+      /* Theme Toggle */
+      .theme-toggle {
+        display: flex;
+        gap: 8px;
+      }
+
+      .theme-option {
+        flex: 1;
+        padding: 10px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: var(--code-bg);
+        color: var(--text-primary);
+        font-size: 12px;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.15s;
+      }
+
+      .theme-option:hover {
+        border-color: var(--accent-color);
+      }
+
+      .theme-option.active {
+        background: var(--accent-color);
+        color: white;
+        border-color: var(--accent-color);
       }
     </style>
   </head>
@@ -773,20 +965,50 @@
 
       let isLoading = false;
 
-      // Load and display current model
+      // Load and display current model + theme
       async function loadConfig() {
         try {
           const config = await ipcRenderer.invoke("get-config");
           modelBadge.textContent = config.model || "unknown";
+          // Apply saved theme
+          applyTheme(config.theme || "dark");
         } catch (err) {
           modelBadge.textContent = "error";
         }
       }
-      loadConfig();
 
-      function addMessage(content, type) {
+      // Theme handling
+      function applyTheme(theme) {
+        document.documentElement.setAttribute("data-theme", theme);
+      }
+
+      // Load chat history on startup
+      async function loadChatHistory() {
+        try {
+          const history = await ipcRenderer.invoke("get-chat-history", 100);
+          if (history && history.length > 0) {
+            // Remove empty state
+            if (emptyState) {
+              emptyState.remove();
+              emptyState = null;
+            }
+            // Restore messages
+            history.forEach((msg) => {
+              addMessage(msg.content, msg.role, false); // false = don't persist again
+            });
+          }
+        } catch (err) {
+          console.error("Failed to load chat history:", err);
+        }
+      }
+
+      loadConfig();
+      loadChatHistory();
+
+      function addMessage(content, type, persist = true) {
         if (emptyState) {
           emptyState.remove();
+          emptyState = null;
         }
 
         const msg = document.createElement("div");
@@ -805,6 +1027,12 @@
 
         chatContainer.appendChild(msg);
         chatContainer.scrollTop = chatContainer.scrollHeight;
+
+        // Persist to database (unless loading from history)
+        if (persist && (type === "user" || type === "assistant" || type === "error")) {
+          ipcRenderer.invoke("add-chat-message", type, content).catch(console.error);
+        }
+
         return msg;
       }
 
@@ -893,6 +1121,13 @@
               </select>
             </div>
             <div class="settings-row">
+              <label>Theme</label>
+              <div class="theme-toggle">
+                <button class="theme-option ${currentConfig.theme === 'light' ? 'active' : ''}" data-theme="light">☀️ Light</button>
+                <button class="theme-option ${currentConfig.theme !== 'light' ? 'active' : ''}" data-theme="dark">🌙 Dark</button>
+              </div>
+            </div>
+            <div class="settings-row">
               <label>Global Shortcut</label>
               <div class="shortcut-display" id="shortcutDisplay">${currentConfig.shortcut || "..."}</div>
               <p class="settings-hint">Press any key combination to change</p>
@@ -913,10 +1148,23 @@
         const closeBtn = overlay.querySelector(".settings-close");
         const cancelBtn = overlay.querySelector("#settingsCancel");
         const saveBtn = overlay.querySelector("#settingsSave");
+        const themeOptions = overlay.querySelectorAll(".theme-option");
 
         // Set current values
         modelSelect.value = currentConfig.model || "gpt-5-mini";
         let newShortcut = currentConfig.shortcut;
+        let newTheme = currentConfig.theme || "dark";
+
+        // Theme toggle handling
+        themeOptions.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            themeOptions.forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            newTheme = btn.dataset.theme;
+            // Preview theme immediately
+            applyTheme(newTheme);
+          });
+        });
 
         // Shortcut recording
         shortcutInput.addEventListener("keydown", (e) => {
@@ -939,7 +1187,11 @@
         });
 
         // Close handlers
-        const close = () => overlay.remove();
+        const close = () => {
+          // Revert theme if cancelled
+          applyTheme(currentConfig.theme || "dark");
+          overlay.remove();
+        };
         closeBtn.onclick = close;
         cancelBtn.onclick = close;
         overlay.onclick = (e) => {
@@ -958,7 +1210,12 @@
             await ipcRenderer.invoke("set-config", "shortcut", newShortcut);
             currentConfig.shortcut = newShortcut;
           }
-          close();
+          if (newTheme !== currentConfig.theme) {
+            await ipcRenderer.invoke("set-config", "theme", newTheme);
+            currentConfig.theme = newTheme;
+          }
+          applyTheme(newTheme);
+          overlay.remove();
         };
       }
 
@@ -968,7 +1225,10 @@
       });
 
       // Clear chat
-      clearBtn.addEventListener("click", () => {
+      clearBtn.addEventListener("click", async () => {
+        // Clear from database
+        await ipcRenderer.invoke("clear-chat-history");
+        
         chatContainer.innerHTML = `
           <div class="empty-state" id="emptyState">
             <svg viewBox="0 0 512 416" xmlns="http://www.w3.org/2000/svg">
@@ -1444,6 +1704,84 @@
         return widget;
       }
 
+      // WiFi Widget
+      function createWifiWidget(data) {
+        const widget = document.createElement("div");
+        widget.className = "widget";
+        widget.style.maxWidth = "300px";
+
+        const header = document.createElement("div");
+        header.className = "widget-header";
+        header.textContent = "📶 WiFi Networks";
+        widget.appendChild(header);
+
+        // Status section
+        const status = document.createElement("div");
+        status.className = "wifi-status";
+        
+        let statusIcon, statusBadge, networkName;
+        
+        if (!data.enabled) {
+          statusIcon = "📵";
+          statusBadge = '<span class="wifi-status-badge off">OFF</span>';
+          networkName = "WiFi Disabled";
+        } else if (data.connected && data.currentNetwork) {
+          statusIcon = "✅";
+          statusBadge = '<span class="wifi-status-badge connected">Connected</span>';
+          networkName = data.currentNetwork;
+        } else {
+          statusIcon = "⚠️";
+          statusBadge = '<span class="wifi-status-badge disconnected">Not Connected</span>';
+          networkName = "No Network";
+        }
+        
+        status.innerHTML = `
+          <span class="wifi-status-icon">${statusIcon}</span>
+          <div class="wifi-status-info">
+            <div class="wifi-status-label">Current Network</div>
+            <div class="wifi-status-network">${networkName}</div>
+          </div>
+          ${statusBadge}
+        `;
+        widget.appendChild(status);
+
+        // Saved networks list
+        if (data.savedNetworks && data.savedNetworks.length > 0) {
+          const listHeader = document.createElement("div");
+          listHeader.className = "widget-header";
+          listHeader.style.marginTop = "8px";
+          listHeader.textContent = `Saved Networks (${data.savedNetworks.length})`;
+          widget.appendChild(listHeader);
+
+          const list = document.createElement("div");
+          list.className = "wifi-networks-list";
+          
+          data.savedNetworks.forEach((network) => {
+            const isCurrent = network === data.currentNetwork;
+            const item = document.createElement("div");
+            item.className = `wifi-network-item ${isCurrent ? "current" : ""}`;
+            item.innerHTML = `
+              <span class="wifi-network-icon">${isCurrent ? "📶" : "📡"}</span>
+              <span>${network}</span>
+              ${isCurrent ? '<span class="wifi-status-badge connected">Connected</span>' : ""}
+            `;
+            list.appendChild(item);
+          });
+          
+          widget.appendChild(list);
+        }
+
+        // Error message if any
+        if (data.error) {
+          const errorEl = document.createElement("div");
+          errorEl.style.cssText = "color: var(--error-text); font-size: 11px; margin-top: 8px;";
+          errorEl.textContent = data.error;
+          widget.appendChild(errorEl);
+        }
+
+        return widget;
+      }
+
       ipcRenderer.on("render-widget", (event, data) => {
         if (emptyState && emptyState.parentNode) {
           emptyState.remove();
@@ -1471,6 +1809,9 @@
             break;
           case "unitconverter":
             widget = createUnitConverterWidget(data.category);
+            break;
+          case "wifi":
+            widget = createWifiWidget(data);
             break;
         }
 

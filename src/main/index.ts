@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { CopilotService } from "./copilot-service.js";
-import { initDb, loadConfig, getConfig, setConfig, getConfigPath, closeDb } from "./database.js";
+import { initDb, loadConfig, getConfig, setConfig, getConfigPath, closeDb, addChatMessage, getChatHistory, clearChatHistory } from "./database.js";
 import { captureAndUpload } from "./screenshot-service.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -110,6 +110,19 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("get-config-value", (_event, key: string) => {
     return getConfig(key);
+  });
+
+  ipcMain.handle("add-chat-message", (_event, role: string, content: string) => {
+    return addChatMessage(role, content);
+  });
+
+  ipcMain.handle("get-chat-history", (_event, limit?: number) => {
+    return getChatHistory(limit);
+  });
+
+  ipcMain.handle("clear-chat-history", () => {
+    clearChatHistory();
+    return { success: true };
   });
 
   ipcMain.handle("quit-app", () => {

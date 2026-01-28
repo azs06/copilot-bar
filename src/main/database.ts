@@ -138,6 +138,47 @@ export function getDbPath(): string {
   return DB_PATH;
 }
 
+// Chat history functions
+export interface ChatMessage {
+  id: number;
+  role: "user" | "assistant" | "error" | "tool";
+  content: string;
+  timestamp: string;
+}
+
+export function addChatMessage(role: string, content: string): number {
+  const database = getDb();
+  database.run(
+    "INSERT INTO chat_history (role, content) VALUES (?, ?)",
+    [role, content]
+  );
+  saveDb();
+  const result = database.exec("SELECT last_insert_rowid()");
+  return result[0]?.values[0]?.[0] as number || 0;
+}
+
+export function getChatHistory(limit: number = 100): ChatMessage[] {
+  const database = getDb();
+  const result = database.exec(
+    `SELECT id, role, content, timestamp FROM chat_history ORDER BY id DESC LIMIT ?`,
+    [limit]
+  );
+  if (result.length === 0) return [];
+  
+  return result[0].values.map((row) => ({
+    id: row[0] as number,
+    role: row[1] as "user" | "assistant" | "error" | "tool",
+    content: row[2] as string,
+    timestamp: row[3] as string,
+  })).reverse(); // Return in chronological order
+}
+
+export function clearChatHistory(): void {
+  const database = getDb();
+  database.run("DELETE FROM chat_history");
+  saveDb();
+}
+
 // Close database
 export function closeDb(): void {
   if (db) {

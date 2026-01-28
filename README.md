@@ -2,16 +2,40 @@
 
 A macOS menu bar app powered by GitHub Copilot SDK. Chat with AI and control your computer from the menu bar.
 
+![Progress](https://img.shields.io/badge/Features-11%2F27%20completed-blue)
+
 ## Features
 
-- **Chat with AI** - Ask questions, get help with tasks (with markdown rendering)
-- **System Control** - Volume, brightness, open apps
-- **File Operations** - Browse, create, and manage files
+### 💬 Chat & AI
+- **Chat with AI** - Ask questions, get help with tasks
+- **Markdown Rendering** - Rich text formatting with syntax highlighting
+- **Chat History** - Conversations persist across sessions (SQLite)
+- **Screenshot Analysis** - Capture screen and ask AI about what's visible
+
+### 🎛️ System Controls
+- **Volume Control** - Set, get, mute/unmute system audio
+- **Brightness Control** - Adjust screen brightness
+- **Do Not Disturb** - Toggle Focus mode on/off
+- **WiFi Control** - Turn WiFi on/off, check status, list saved networks
+- **App Launcher** - Open any application by name
 - **Shell Commands** - Run terminal commands via natural language
-- **Reminders** - Set reminders with native macOS notifications
-- **Interactive Widgets** - Timer, countdown, Pomodoro, world clock, unit converter
-- **Screenshot Capture** - Take screenshots for AI analysis
-- **Global Shortcut** - Quick access from anywhere
+
+### ⏱️ Widgets & Productivity
+- **Timer** - Interactive stopwatch with start/pause/reset
+- **Countdown** - Custom duration countdown with notifications
+- **Pomodoro** - 25min work / 5min break productivity timer
+- **World Clock** - Real-time display of multiple timezones
+- **Unit Converter** - Convert length, weight, temperature, volume, area, speed
+- **WiFi Widget** - Visual display of network status and saved networks
+
+### 🔔 Reminders
+- **Native Notifications** - Set reminders that trigger macOS notifications
+- **List & Cancel** - View active reminders and cancel them
+
+### 🎨 Customization
+- **Light/Dark Theme** - Toggle between themes in settings
+- **Global Shortcut** - Customizable keyboard shortcut
+- **Model Selection** - Choose from multiple AI models
 
 ## Keyboard Shortcut
 
@@ -19,7 +43,21 @@ A macOS menu bar app powered by GitHub Copilot SDK. Chat with AI and control you
 |----------|--------|
 | `Cmd+Shift+T` (macOS) / `Ctrl+Shift+T` (Windows/Linux) | Toggle Copilot Bar |
 
-The shortcut can be customized in the settings menu.
+The shortcut can be customized in the settings menu (⚙️).
+
+## Screenshots
+
+### Chat Interface
+The main chat interface with markdown rendering and interactive widgets.
+
+### Widgets
+- **Timer/Countdown/Pomodoro** - Productivity timers with start/pause/reset controls
+- **World Clock** - Real-time display of multiple timezones
+- **Unit Converter** - Interactive converter for length, weight, temperature, volume, area, speed
+- **WiFi Widget** - Visual network status and saved networks list
+
+### Settings
+Configure AI model, theme (light/dark), and global keyboard shortcut.
 
 ## Prerequisites
 
@@ -40,24 +78,31 @@ npm run build
 npm start
 ```
 
+## macOS Permissions
+
+Some features require macOS permissions:
+
+- **Accessibility**: Needed for Do Not Disturb toggling via UI automation fallback
+- **Notifications**: Needed for reminder notifications
+- **Screen Recording**: Needed for screenshot capture
+
+You can grant these in **System Settings → Privacy & Security**.
+
 ## Configuration
 
-Config file location: `~/.copilot-bar/config.json`
+Settings are stored in SQLite at: `~/.copilot-bar/copilot-bar.db`
 
-```json
-{
-  "model": "gpt-5-mini"
-}
-```
+Access settings via the ⚙️ button in the app to configure:
+- AI Model
+- Theme (Light/Dark)
+- Global Shortcut
 
 ### Available Models
 
-Change the `model` field to use different AI models:
-
 - `gpt-5-mini` (default)
 - `gpt-5`
-- `claude-sonnet-4.5`
-- And other models supported by Copilot SDK
+- `claude-3.5-sonnet`
+- `claude-4-opus`
 
 ## Usage Examples
 
@@ -67,6 +112,21 @@ Change the `model` field to use different AI models:
 - "Mute my computer"
 - "What's the current volume?"
 - "Set brightness to 80%"
+
+### Do Not Disturb
+
+- "Turn on do not disturb"
+- "Disable DND"
+- "Is focus mode enabled?"
+- "Toggle do not disturb"
+
+### WiFi
+
+- "Turn off WiFi"
+- "Is WiFi on?"
+- "What network am I connected to?"
+- "List WiFi networks"
+- "Show my saved networks"
 
 ### Applications
 
@@ -110,25 +170,58 @@ Change the `model` field to use different AI models:
 
 The app includes these custom tools for system interaction:
 
+### Audio & Display
+
 | Tool | Description |
 |------|-------------|
 | `set_volume` | Set system volume (0-100%) |
 | `get_volume` | Get current volume level |
 | `toggle_mute` | Mute/unmute audio |
 | `set_brightness` | Set screen brightness (requires `brightness` CLI) |
+
+### System Controls
+
+| Tool | Description |
+|------|-------------|
+| `set_do_not_disturb` | Enable/disable Do Not Disturb |
+| `get_do_not_disturb_status` | Check if DND is enabled |
+| `toggle_do_not_disturb` | Toggle DND on/off |
+| `set_wifi` | Turn WiFi on/off |
+| `get_wifi_status` | Get WiFi status and current network |
+| `toggle_wifi` | Toggle WiFi on/off |
+| `list_wifi_networks` | List saved WiFi networks (widget) |
 | `open_application` | Open macOS apps by name |
 | `run_shell_command` | Execute shell commands |
-| `start_timer` | Interactive stopwatch widget with start/pause/reset |
-| `start_countdown` | Countdown timer with custom duration and label |
+
+### Widgets
+
+| Tool | Description |
+|------|-------------|
+| `start_timer` | Interactive stopwatch widget |
+| `start_countdown` | Countdown timer with custom duration |
 | `start_pomodoro` | Pomodoro timer (25min work / 5min break) |
-| `show_world_clock` | Display multiple timezones in real-time |
-| `get_time` | Get current time in any timezone |
-| `show_unit_converter` | Interactive unit converter widget |
+| `show_world_clock` | Display multiple timezones |
+| `show_unit_converter` | Interactive unit converter |
 | `convert_unit` | Convert values between units |
-| `set_reminder` | Schedule a reminder with native notification |
+
+### Reminders & Time
+
+| Tool | Description |
+|------|-------------|
+| `set_reminder` | Schedule a reminder notification |
 | `list_reminders` | List all active reminders |
 | `cancel_reminder` | Cancel a scheduled reminder |
+| `get_time` | Get current time in any timezone |
 | `capture_screenshot` | Capture screen for AI analysis |
+
+## Data Storage
+
+All data is stored locally in SQLite:
+
+| Data | Location |
+|------|----------|
+| Config & Settings | `~/.copilot-bar/copilot-bar.db` |
+| Chat History | `~/.copilot-bar/copilot-bar.db` |
 
 ## Screenshot & S3 Upload (Optional)
 
@@ -164,7 +257,36 @@ npm start
 - **Electron** - Desktop app framework
 - **menubar** - Menu bar integration
 - **@github/copilot-sdk** - AI capabilities
+- **sql.js** - SQLite for persistence
+- **marked** - Markdown rendering
+- **highlight.js** - Syntax highlighting
 - **TypeScript** - Type safety
+
+## Troubleshooting
+
+### Do Not Disturb doesn't toggle
+- Ensure Accessibility permissions are granted.
+- If it still fails, macOS may block UI automation in the background.
+
+### WiFi list doesn't show nearby networks
+- The `list_wifi_networks` tool shows **saved/preferred networks** on newer macOS versions.
+- A live scan requires the deprecated `airport` utility (missing on modern macOS).
+
+### Screenshot capture fails
+- Grant **Screen Recording** permission.
+- If using S3 uploads, verify `.env` credentials.
+
+## Roadmap
+
+See [TASKS.md](./TASKS.md) for the full feature roadmap. Upcoming features include:
+
+- Bluetooth toggle & device listing
+- AirDrop toggle
+- Window organizer
+- Clipboard history
+- Voice input/output
+- Weather widget
+- And more...
 
 ## License
 

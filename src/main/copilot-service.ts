@@ -198,6 +198,420 @@ const openAppTool = defineTool("open_application", {
   },
 });
 
+// Do Not Disturb / Focus Mode tools
+const setDoNotDisturbTool = defineTool("set_do_not_disturb", {
+  description: "Turn Do Not Disturb (Focus mode) on or off on macOS. When enabled, notifications will be silenced.",
+  parameters: {
+    type: "object",
+    properties: {
+      enabled: {
+        type: "boolean",
+        description: "True to enable Do Not Disturb, false to disable it",
+      },
+    },
+    required: ["enabled"],
+  },
+  handler: async ({ enabled }: { enabled: boolean }) => {
+    try {
+      // Use shortcuts command to toggle Focus mode
+      // First, try using the Focus mode shortcuts (macOS 12+)
+      const script = enabled
+        ? `
+          tell application "System Events"
+            tell process "ControlCenter"
+              -- Click the Control Center menu bar item
+              click menu bar item "Control Center" of menu bar 1
+              delay 0.5
+              -- Click Focus
+              click button "Focus" of window "Control Center"
+              delay 0.3
+              -- Click Do Not Disturb to enable
+              click checkbox "Do Not Disturb" of group 1 of window "Control Center"
+              delay 0.2
+              -- Click away to close
+              key code 53
+            end tell
+          end tell
+        `
+        : `
+          tell application "System Events"
+            tell process "ControlCenter"
+              click menu bar item "Control Center" of menu bar 1
+              delay 0.5
+              click button "Focus" of window "Control Center"
+              delay 0.3
+              -- Check if DND is on, if so click to disable
+              set focusButton to checkbox "Do Not Disturb" of group 1 of window "Control Center"
+              if value of focusButton is 1 then
+                click focusButton
+              end if
+              delay 0.2
+              key code 53
+            end tell
+          end tell
+        `;
+
+      // Alternative simpler approach using shortcuts if available
+      // First try the simple Focus toggle approach
+      try {
+        if (enabled) {
+          // Enable DND using defaults and killall
+          await execAsync(`defaults -currentHost write com.apple.notificationcenterui doNotDisturb -boolean true && killall NotificationCenter 2>/dev/null || true`, { timeout: 5000 });
+        } else {
+          await execAsync(`defaults -currentHost write com.apple.notificationcenterui doNotDisturb -boolean false && killall NotificationCenter 2>/dev/null || true`, { timeout: 5000 });
+        }
+        return { 
+          success: true, 
+          enabled,
+          message: enabled ? "Do Not Disturb enabled" : "Do Not Disturb disabled" 
+        };
+      } catch {
+        // Fallback to AppleScript approach
+        await execAsync(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`, { timeout: 15000 });
+        return { 
+          success: true, 
+          enabled,
+          message: enabled ? "Do Not Disturb enabled" : "Do Not Disturb disabled" 
+        };
+      }
+    } catch (error: any) {
+      return { 
+        success: false, 
+        error: `Failed to toggle Do Not Disturb: ${error.message}. You may need to grant Accessibility permissions to the app.` 
+      };
+    }
+  },
+});
+
+const getDoNotDisturbStatusTool = defineTool("get_do_not_disturb_status", {
+  description: "Check if Do Not Disturb (Focus mode) is currently enabled on macOS.",
+  parameters: {
+    type: "object",
+    properties: {},
+  },
+  handler: async () => {
+    try {
+      // Check the DND status using defaults
+      const { stdout } = await execAsync(
+        `defaults -currentHost read com.apple.notificationcenterui doNotDisturb 2>/dev/null || echo "0"`,
+        { timeout: 5000 }
+      );
+      const isEnabled = stdout.trim() === "1";
+      return { 
+        success: true, 
+        enabled: isEnabled,
+        message: isEnabled ? "Do Not Disturb is ON" : "Do Not Disturb is OFF"
+      };
+    } catch (error: any) {
+      // If the key doesn't exist, DND is off
+      return { 
+        success: true, 
+        enabled: false,
+        message: "Do Not Disturb is OFF"
+      };
+    }
+  },
+});
+
+const toggleDoNotDisturbTool = defineTool("toggle_do_not_disturb", {
+  description: "Toggle Do Not Disturb (Focus mode) on macOS. If it's on, turn it off. If it's off, turn it on.",
+  parameters: {
+    type: "object",
+    properties: {},
+  },
+  handler: async () => {
+    try {
+      // Check current status
+      const { stdout } = await execAsync(
+        `defaults -currentHost read com.apple.notificationcenterui doNotDisturb 2>/dev/null || echo "0"`,
+        { timeout: 5000 }
+      );
+      const currentlyEnabled = stdout.trim() === "1";
+      const newState = !currentlyEnabled;
+      
+      // Toggle it
+      await execAsync(
+        `defaults -currentHost write com.apple.notificationcenterui doNotDisturb -boolean ${newState} && killall NotificationCenter 2>/dev/null || true`,
+        { timeout: 5000 }
+      );
+      
+      return { 
+        success: true, 
+        enabled: newState,
+        message: newState ? "Do Not Disturb enabled" : "Do Not Disturb disabled"
+      };
+    } catch (error: any) {
+      return { 
+        success: false, 
+        error: `Failed to toggle Do Not Disturb: ${error.message}` 
+      };
+    }
+  },
+});
+
+// Helper function to get WiFi interface name (usually en0, but can vary)
+async function getWifiInterface(): Promise<string> {
+  try {
+    const { stdout } = await execAsync(
+      `networksetup -listallhardwareports | awk '/Wi-Fi|AirPort/{getline; print $2}'`,
+      { timeout: 5000 }
+    );
+    const iface = stdout.trim();
+    return iface || "en0"; // Default to en0 if not found
+  } catch {
+    return "en0";
+  }
+}
+
+// Helper: get SSID for a specific interface using ipconfig
+async function getSsidForInterface(iface: string): Promise<string | null> {
+  try {
+    const { stdout } = await execAsync(
+      `ipconfig getsummary ${iface} | awk -F': ' '/ SSID/ {print $2}'`,
+      { timeout: 5000 }
+    );
+    const ssid = stdout.trim();
+    return ssid ? ssid : null;
+  } catch {
+    return null;
+  }
+}
+
+// Helper: get current SSID using multiple fallbacks
+async function getCurrentWifiSsid(): Promise<string | null> {
+  const iface = await getWifiInterface();
+  let ssid = await getSsidForInterface(iface);
+  if (ssid) return ssid;
+
+  // Fallback: check all en* interfaces
+  try {
+    const { stdout } = await execAsync(`ifconfig -lX "en[0-9]"`, { timeout: 5000 });
+    const interfaces = stdout.trim().split(/\s+/).filter(Boolean);
+    for (const candidate of interfaces) {
+      ssid = await getSsidForInterface(candidate);
+      if (ssid) return ssid;
+    }
+  } catch {
+    // ignore
+  }
+
+  return null;
+}
+
+// WiFi control tools
+const setWifiTool = defineTool("set_wifi", {
+  description: "Turn WiFi on or off on macOS.",
+  parameters: {
+    type: "object",
+    properties: {
+      enabled: {
+        type: "boolean",
+        description: "True to turn WiFi on, false to turn it off",
+      },
+    },
+    required: ["enabled"],
+  },
+  handler: async ({ enabled }: { enabled: boolean }) => {
+    try {
+      const iface = await getWifiInterface();
+      const state = enabled ? "on" : "off";
+      await execAsync(`networksetup -setairportpower ${iface} ${state}`, { timeout: 10000 });
+      return { 
+        success: true, 
+        enabled,
+        interface: iface,
+        message: enabled ? "WiFi turned on" : "WiFi turned off"
+      };
+    } catch (error: any) {
+      return { 
+        success: false, 
+        error: `Failed to set WiFi: ${error.message}` 
+      };
+    }
+  },
+});
+
+const getWifiStatusTool = defineTool("get_wifi_status", {
+  description: "Get the current WiFi status on macOS - whether it's on or off, and the current network name if connected.",
+  parameters: {
+    type: "object",
+    properties: {},
+  },
+  handler: async () => {
+    try {
+      const iface = await getWifiInterface();
+
+      // Check if WiFi is on
+      const { stdout: powerStatus } = await execAsync(
+        `networksetup -getairportpower ${iface}`,
+        { timeout: 5000 }
+      );
+      const isOn = powerStatus.toLowerCase().includes("on");
+
+      if (!isOn) {
+        return {
+          success: true,
+          enabled: false,
+          connected: false,
+          message: "WiFi is OFF"
+        };
+      }
+
+      // Get current network name (with fallback)
+      let networkName: string | null = null;
+      try {
+        const { stdout: networkInfo } = await execAsync(
+          `networksetup -getairportnetwork ${iface}`,
+          { timeout: 5000 }
+        );
+        const match = networkInfo.match(/Current Wi-Fi Network: (.+)/);
+        networkName = match ? match[1].trim() : null;
+      } catch {
+        // ignore and use fallback
+      }
+
+      if (!networkName) {
+        networkName = await getCurrentWifiSsid();
+      }
+
+      return {
+        success: true,
+        enabled: true,
+        connected: !!networkName,
+        networkName: networkName || null,
+        interface: iface,
+        message: networkName ? `WiFi is ON, connected to "${networkName}"` : "WiFi is ON but not connected"
+      };
+    } catch (error: any) {
+      return { 
+        success: false, 
+        error: `Failed to get WiFi status: ${error.message}` 
+      };
+    }
+  },
+});
+
+const toggleWifiTool = defineTool("toggle_wifi", {
+  description: "Toggle WiFi on macOS. If it's on, turn it off. If it's off, turn it on.",
+  parameters: {
+    type: "object",
+    properties: {},
+  },
+  handler: async () => {
+    try {
+      const iface = await getWifiInterface();
+      
+      // Check current status
+      const { stdout: powerStatus } = await execAsync(
+        `networksetup -getairportpower ${iface}`,
+        { timeout: 5000 }
+      );
+      const isCurrentlyOn = powerStatus.toLowerCase().includes("on");
+      const newState = !isCurrentlyOn;
+      
+      // Toggle it
+      await execAsync(
+        `networksetup -setairportpower ${iface} ${newState ? "on" : "off"}`,
+        { timeout: 10000 }
+      );
+      
+      return { 
+        success: true, 
+        enabled: newState,
+        interface: iface,
+        message: newState ? "WiFi turned on" : "WiFi turned off"
+      };
+    } catch (error: any) {
+      return { 
+        success: false, 
+        error: `Failed to toggle WiFi: ${error.message}` 
+      };
+    }
+  },
+});
+
+const listWifiNetworksTool = defineTool("list_wifi_networks", {
+  description: "List saved/preferred WiFi networks on macOS and show the current connection status. Displays an interactive widget.",
+  parameters: {
+    type: "object",
+    properties: {},
+  },
+  handler: async () => {
+    try {
+      const iface = await getWifiInterface();
+      
+      // Check if WiFi is on
+      const { stdout: powerStatus } = await execAsync(
+        `networksetup -getairportpower ${iface}`,
+        { timeout: 5000 }
+      );
+      const isOn = powerStatus.toLowerCase().includes("on");
+      
+      if (!isOn) {
+        return {
+          widget: "wifi",
+          enabled: false,
+          connected: false,
+          currentNetwork: null,
+          savedNetworks: [],
+          message: "WiFi is turned off"
+        };
+      }
+      
+      // Get current network
+      let currentNetwork: string | null = null;
+      try {
+        const { stdout: networkInfo } = await execAsync(
+          `networksetup -getairportnetwork ${iface}`,
+          { timeout: 5000 }
+        );
+        const match = networkInfo.match(/Current Wi-Fi Network: (.+)/);
+        currentNetwork = match ? match[1].trim() : null;
+      } catch {
+        // Not connected
+      }
+
+      if (!currentNetwork) {
+        currentNetwork = await getCurrentWifiSsid();
+      }
+      
+      // Get preferred/saved networks
+      const { stdout: preferredOutput } = await execAsync(
+        `networksetup -listpreferredwirelessnetworks ${iface}`,
+        { timeout: 5000 }
+      );
+      
+      const lines = preferredOutput.trim().split("\n");
+      const savedNetworks: string[] = [];
+      
+      // Skip the header line "Preferred networks on en0:"
+      for (let i = 1; i < lines.length; i++) {
+        const network = lines[i].trim();
+        if (network) {
+          savedNetworks.push(network);
+        }
+      }
+      
+      return {
+        widget: "wifi",
+        enabled: true,
+        currentNetwork,
+        connected: !!currentNetwork,
+        savedNetworks,
+        message: currentNetwork 
+          ? `Connected to "${currentNetwork}"`
+          : `WiFi is on but not connected`
+      };
+    } catch (error: any) {
+      return { 
+        widget: "wifi",
+        enabled: false,
+        error: `Failed to list WiFi networks: ${error.message}` 
+      };
+    }
+  },
+});
+
 // Widget tools for interactive UI elements
 const startTimerTool = defineTool("start_timer", {
   description: "Start an interactive stopwatch/timer widget that counts up from 0. The widget will appear in the chat with start/pause/reset controls.",
@@ -565,6 +979,13 @@ const systemTools = [
   setBrightnessTool,
   runShellTool,
   openAppTool,
+  setDoNotDisturbTool,
+  getDoNotDisturbStatusTool,
+  toggleDoNotDisturbTool,
+  setWifiTool,
+  getWifiStatusTool,
+  toggleWifiTool,
+  listWifiNetworksTool,
   startTimerTool,
   startCountdownTool,
   startPomodoroTool,
@@ -585,11 +1006,17 @@ export interface ToolEvent {
 }
 
 export interface WidgetEvent {
-  type: "timer" | "countdown" | "pomodoro" | "worldclock" | "unitconverter";
+  type: "timer" | "countdown" | "pomodoro" | "worldclock" | "unitconverter" | "wifi";
   duration?: number;
   label?: string;
   cities?: Array<{ name: string; timezone: string }>;
   category?: string;
+  // WiFi widget properties
+  enabled?: boolean;
+  connected?: boolean;
+  currentNetwork?: string | null;
+  savedNetworks?: string[];
+  error?: string;
 }
 
 export class CopilotService {
@@ -667,6 +1094,11 @@ export class CopilotService {
                   label: result.label,
                   cities: result.cities,
                   category: result.category,
+                  enabled: result.enabled,
+                  connected: result.connected,
+                  currentNetwork: result.currentNetwork ?? null,
+                  savedNetworks: result.savedNetworks,
+                  error: result.error,
                 });
               }
             } catch {
