@@ -398,6 +398,16 @@ async function getCurrentWifiSsid(): Promise<string | null> {
   return null;
 }
 
+// Helper function to check if blueutil is available
+async function checkBlueutil(): Promise<boolean> {
+  try {
+    await execAsync("which blueutil", { timeout: 2000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // WiFi control tools
 const setWifiTool = defineTool("set_wifi", {
   description: "Turn WiFi on or off on macOS.",
@@ -607,6 +617,116 @@ const listWifiNetworksTool = defineTool("list_wifi_networks", {
         widget: "wifi",
         enabled: false,
         error: `Failed to list WiFi networks: ${error.message}` 
+      };
+    }
+  },
+});
+
+// Bluetooth tools
+const setBluetoothTool = defineTool("set_bluetooth", {
+  description: "Turn Bluetooth on or off on macOS.",
+  parameters: {
+    type: "object",
+    properties: {
+      enabled: {
+        type: "boolean",
+        description: "True to turn Bluetooth on, false to turn it off",
+      },
+    },
+    required: ["enabled"],
+  },
+  handler: async ({ enabled }: { enabled: boolean }) => {
+    // Check if blueutil is available
+    if (!(await checkBlueutil())) {
+      return {
+        success: false,
+        error: "Bluetooth control requires 'blueutil' to be installed. Install it via: brew install blueutil"
+      };
+    }
+
+    try {
+      const state = enabled ? "on" : "off";
+      await execAsync(`blueutil --power ${state}`, { timeout: 10000 });
+      return {
+        success: true,
+        enabled,
+        message: enabled ? "Bluetooth turned on" : "Bluetooth turned off"
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to set Bluetooth: ${error.message}`
+      };
+    }
+  },
+});
+
+const getBluetoothStatusTool = defineTool("get_bluetooth_status", {
+  description: "Check if Bluetooth is enabled on macOS.",
+  parameters: {
+    type: "object",
+    properties: {},
+  },
+  handler: async () => {
+    // Check if blueutil is available
+    if (!(await checkBlueutil())) {
+      return {
+        success: false,
+        error: "Bluetooth control requires 'blueutil' to be installed. Install it via: brew install blueutil"
+      };
+    }
+
+    try {
+      const { stdout } = await execAsync("blueutil --power", { timeout: 5000 });
+      const enabled = stdout.trim() === "1";
+      return {
+        success: true,
+        enabled,
+        message: enabled ? "Bluetooth is on" : "Bluetooth is off"
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to get Bluetooth status: ${error.message}`
+      };
+    }
+  },
+});
+
+const toggleBluetoothTool = defineTool("toggle_bluetooth", {
+  description: "Toggle Bluetooth on or off on macOS (flips the current state).",
+  parameters: {
+    type: "object",
+    properties: {},
+  },
+  handler: async () => {
+    // Check if blueutil is available
+    if (!(await checkBlueutil())) {
+      return {
+        success: false,
+        error: "Bluetooth control requires 'blueutil' to be installed. Install it via: brew install blueutil"
+      };
+    }
+
+    try {
+      // Get current state
+      const { stdout } = await execAsync("blueutil --power", { timeout: 5000 });
+      const currentState = stdout.trim() === "1";
+      const newState = !currentState;
+
+      // Toggle to new state
+      const state = newState ? "on" : "off";
+      await execAsync(`blueutil --power ${state}`, { timeout: 10000 });
+
+      return {
+        success: true,
+        enabled: newState,
+        message: newState ? "Bluetooth turned on" : "Bluetooth turned off"
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to toggle Bluetooth: ${error.message}`
       };
     }
   },
@@ -986,6 +1106,9 @@ const systemTools = [
   getWifiStatusTool,
   toggleWifiTool,
   listWifiNetworksTool,
+  setBluetoothTool,
+  getBluetoothStatusTool,
+  toggleBluetoothTool,
   startTimerTool,
   startCountdownTool,
   startPomodoroTool,
