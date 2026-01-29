@@ -4,6 +4,53 @@
     <meta charset="UTF-8" />
     <title>Copilot Bar</title>
     <style>
+      :root {
+        /* Dark theme (default) */
+        --bg-primary: #1a1a1a;
+        --bg-secondary: #252525;
+        --bg-tertiary: #2a2a2a;
+        --bg-input: #252525;
+        --border-color: #333;
+        --text-primary: #e0e0e0;
+        --text-secondary: #888;
+        --text-muted: #666;
+        --accent-color: #0066ff;
+        --accent-hover: #0052cc;
+        --user-message-bg: #0066ff;
+        --user-message-text: white;
+        --assistant-message-bg: #2a2a2a;
+        --code-bg: #1a1a1a;
+        --error-bg: #4a1c1c;
+        --error-text: #ff6b6b;
+        --tool-bg: #2a2a1a;
+        --tool-text: #f0a020;
+        --tool-complete-bg: #1a2a1a;
+        --tool-complete-text: #40a040;
+      }
+
+      [data-theme="light"] {
+        --bg-primary: #ffffff;
+        --bg-secondary: #f5f5f5;
+        --bg-tertiary: #ebebeb;
+        --bg-input: #ffffff;
+        --border-color: #ddd;
+        --text-primary: #1a1a1a;
+        --text-secondary: #666;
+        --text-muted: #999;
+        --accent-color: #0066ff;
+        --accent-hover: #0052cc;
+        --user-message-bg: #0066ff;
+        --user-message-text: white;
+        --assistant-message-bg: #f0f0f0;
+        --code-bg: #e8e8e8;
+        --error-bg: #ffe0e0;
+        --error-text: #cc0000;
+        --tool-bg: #fff8e0;
+        --tool-text: #996600;
+        --tool-complete-bg: #e0ffe0;
+        --tool-complete-text: #006600;
+      }
+
       * {
         box-sizing: border-box;
         margin: 0;
@@ -13,49 +60,111 @@
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
           sans-serif;
-        background: #1a1a1a;
-        color: #e0e0e0;
+        background: var(--bg-primary);
+        color: var(--text-primary);
         height: 100vh;
         display: flex;
         flex-direction: column;
       }
 
       .header {
+        padding: 12px 16px 10px 16px;
+        border-bottom: 1px solid var(--border-color);
         display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 12px 16px;
-        border-bottom: 1px solid #333;
+        flex-direction: column;
+        gap: 8px;
       }
 
-      .header-left {
+      .header-row {
         display: flex;
         align-items: center;
-        gap: 10px;
+        justify-content: space-between;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .header-meta {
+        justify-content: flex-start;
+        gap: 8px;
+        flex-wrap: nowrap;
+      }
+
+      .header-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
       }
 
       .header h1 {
         font-size: 14px;
         font-weight: 600;
-        color: #fff;
+        color: var(--text-primary);
         display: flex;
         align-items: center;
         gap: 8px;
+        white-space: nowrap;
       }
 
       .header h1 svg {
         width: 18px;
         height: 18px;
-        fill: #fff;
+        fill: var(--text-primary);
       }
 
-      .model-badge {
+      .pill {
         font-size: 10px;
-        padding: 3px 8px;
-        background: #333;
-        color: #888;
-        border-radius: 10px;
+        padding: 5px 10px;
+        background: var(--bg-tertiary);
+        color: var(--text-secondary);
+        border: 1px solid transparent;
+        border-radius: 999px;
         font-weight: 500;
+        max-width: 210px;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      button.pill {
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .pill-label {
+        display: block;
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .pill-caret {
+        flex: 0 0 auto;
+        color: var(--text-secondary);
+        font-size: 10px;
+      }
+
+      button.pill:hover {
+        color: var(--text-primary);
+        background: var(--bg-secondary);
+      }
+
+      #sessionBadge {
+        background: var(--bg-secondary);
+        border-color: var(--border-color);
+        color: var(--text-primary);
+        flex: 1 1 auto;
+      }
+
+      #modelBadge {
+        background: var(--bg-tertiary);
+        border-color: transparent;
+        color: var(--text-secondary);
       }
 
       .header-actions {
@@ -64,18 +173,23 @@
       }
 
       .config-btn {
-        background: none;
-        border: none;
-        color: #888;
+        background: transparent;
+        border: 1px solid transparent;
+        color: var(--text-secondary);
         cursor: pointer;
         font-size: 14px;
-        padding: 4px 8px;
-        border-radius: 4px;
+        width: 30px;
+        height: 30px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
       }
 
       .config-btn:hover {
-        color: #fff;
-        background: #333;
+        color: var(--text-primary);
+        background: var(--bg-tertiary);
+        border-color: var(--border-color);
       }
 
       .chat-container {
@@ -97,16 +211,16 @@
       }
 
       .message.user {
-        background: #0066ff;
-        color: white;
+        background: var(--user-message-bg);
+        color: var(--user-message-text);
         align-self: flex-end;
         border-bottom-right-radius: 4px;
         white-space: pre-wrap;
       }
 
       .message.assistant {
-        background: #2a2a2a;
-        color: #e0e0e0;
+        background: var(--assistant-message-bg);
+        color: var(--text-primary);
         align-self: flex-start;
         border-bottom-left-radius: 4px;
       }
@@ -121,7 +235,7 @@
       }
 
       .message.assistant code {
-        background: #1a1a1a;
+        background: var(--code-bg);
         padding: 2px 6px;
         border-radius: 4px;
         font-family: "SF Mono", "Monaco", "Menlo", monospace;
@@ -129,7 +243,7 @@
       }
 
       .message.assistant pre {
-        background: #1a1a1a;
+        background: var(--code-bg);
         padding: 12px;
         border-radius: 8px;
         overflow-x: auto;
@@ -157,7 +271,7 @@
       .message.assistant h2,
       .message.assistant h3 {
         margin: 12px 0 8px 0;
-        color: #fff;
+        color: var(--text-primary);
       }
 
       .message.assistant h1 { font-size: 16px; }
@@ -165,10 +279,10 @@
       .message.assistant h3 { font-size: 13px; }
 
       .message.assistant blockquote {
-        border-left: 3px solid #444;
+        border-left: 3px solid var(--border-color);
         padding-left: 12px;
         margin: 8px 0;
-        color: #aaa;
+        color: var(--text-secondary);
       }
 
       .message.assistant a {
@@ -181,7 +295,7 @@
       }
 
       .message.assistant strong {
-        color: #fff;
+        color: var(--text-primary);
       }
 
       .message.assistant table {
@@ -192,12 +306,12 @@
 
       .message.assistant th,
       .message.assistant td {
-        border: 1px solid #444;
+        border: 1px solid var(--border-color);
         padding: 6px 10px;
       }
 
       .message.assistant th {
-        background: #333;
+        background: var(--bg-tertiary);
       }
 
       /* Syntax highlighting (GitHub dark theme) */
@@ -216,9 +330,25 @@
       .hljs-type,
       .hljs-class { color: #7ee787; }
 
+      /* Light theme syntax highlighting */
+      [data-theme="light"] .hljs-keyword,
+      [data-theme="light"] .hljs-selector-tag,
+      [data-theme="light"] .hljs-built_in { color: #d73a49; }
+      [data-theme="light"] .hljs-string,
+      [data-theme="light"] .hljs-attr { color: #032f62; }
+      [data-theme="light"] .hljs-number,
+      [data-theme="light"] .hljs-literal { color: #005cc5; }
+      [data-theme="light"] .hljs-comment { color: #6a737d; }
+      [data-theme="light"] .hljs-function,
+      [data-theme="light"] .hljs-title { color: #6f42c1; }
+      [data-theme="light"] .hljs-variable,
+      [data-theme="light"] .hljs-params { color: #e36209; }
+      [data-theme="light"] .hljs-type,
+      [data-theme="light"] .hljs-class { color: #22863a; }
+
       .message.error {
-        background: #4a1c1c;
-        color: #ff6b6b;
+        background: var(--error-bg);
+        color: var(--error-text);
       }
 
       .empty-state {
@@ -227,7 +357,7 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        color: #666;
+        color: var(--text-muted);
         text-align: center;
         padding: 20px;
       }
@@ -235,7 +365,7 @@
       .empty-state svg {
         width: 48px;
         height: 48px;
-        fill: #444;
+        fill: var(--border-color);
         margin-bottom: 12px;
       }
 
@@ -245,18 +375,77 @@
 
       .input-area {
         padding: 12px 16px;
-        border-top: 1px solid #333;
+        border-top: 1px solid var(--border-color);
         display: flex;
         gap: 8px;
+        align-items: flex-end;
+      }
+
+      .input-stack {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        position: relative;
+      }
+
+      .command-hint {
+        display: none;
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: calc(100% + 6px);
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+      }
+
+      .command-hint-header {
+        padding: 8px 10px;
+        font-size: 11px;
+        color: var(--text-secondary);
+        border-bottom: 1px solid var(--border-color);
+        background: var(--bg-tertiary);
+      }
+
+      .command-hint-item {
+        width: 100%;
+        text-align: left;
+        border: none;
+        background: transparent;
+        padding: 8px 10px;
+        cursor: pointer;
+        color: var(--text-primary);
+        font-size: 12px;
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+      }
+
+      .command-hint-item:hover {
+        background: var(--bg-tertiary);
+      }
+
+      .command-hint-item code {
+        font-family: "SF Mono", "Monaco", "Menlo", monospace;
+        font-size: 12px;
+        color: var(--accent-color);
+      }
+
+      .command-hint-desc {
+        color: var(--text-secondary);
+        font-size: 11px;
       }
 
       textarea {
         flex: 1;
         padding: 10px 12px;
-        border: 1px solid #333;
+        border: 1px solid var(--border-color);
         border-radius: 8px;
-        background: #252525;
-        color: #e0e0e0;
+        background: var(--bg-input);
+        color: var(--text-primary);
         font-size: 13px;
         resize: none;
         font-family: inherit;
@@ -266,12 +455,16 @@
 
       textarea:focus {
         outline: none;
-        border-color: #0066ff;
+        border-color: var(--accent-color);
+      }
+
+      textarea::placeholder {
+        color: var(--text-muted);
       }
 
       .send-btn {
         padding: 10px 16px;
-        background: #0066ff;
+        background: var(--accent-color);
         color: white;
         border: none;
         border-radius: 8px;
@@ -281,15 +474,17 @@
         display: flex;
         align-items: center;
         gap: 6px;
+        height: 40px;
+        align-self: flex-end;
       }
 
       .send-btn:hover {
-        background: #0052cc;
+        background: var(--accent-hover);
       }
 
       .send-btn:disabled {
-        background: #333;
-        color: #666;
+        background: var(--bg-tertiary);
+        color: var(--text-muted);
         cursor: not-allowed;
       }
 
@@ -318,7 +513,7 @@
       .typing-indicator span {
         width: 6px;
         height: 6px;
-        background: #666;
+        background: var(--text-muted);
         border-radius: 50%;
         animation: bounce 1.4s infinite ease-in-out;
       }
@@ -344,9 +539,9 @@
 
       .tool-activity {
         font-size: 11px;
-        color: #f0a020;
+        color: var(--tool-text);
         padding: 6px 14px;
-        background: #2a2a1a;
+        background: var(--tool-bg);
         border-radius: 8px;
         margin: 4px 0;
         display: flex;
@@ -359,14 +554,14 @@
       }
 
       .tool-activity.complete {
-        color: #40a040;
-        background: #1a2a1a;
+        color: var(--tool-complete-text);
+        background: var(--tool-complete-bg);
       }
 
       /* Widget Styles */
       .widget {
-        background: #252525;
-        border: 1px solid #333;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
         border-radius: 12px;
         padding: 16px;
         margin: 8px 0;
@@ -375,7 +570,7 @@
 
       .widget-header {
         font-size: 11px;
-        color: #888;
+        color: var(--text-secondary);
         margin-bottom: 8px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
@@ -384,7 +579,7 @@
       .widget-display {
         font-size: 42px;
         font-family: "SF Mono", "Monaco", "Menlo", monospace;
-        color: #fff;
+        color: var(--text-primary);
         text-align: center;
         margin: 16px 0;
         font-weight: 300;
@@ -396,7 +591,7 @@
 
       .widget-status {
         font-size: 11px;
-        color: #888;
+        color: var(--text-secondary);
         text-align: center;
         margin-bottom: 12px;
       }
@@ -411,23 +606,24 @@
         padding: 8px 16px;
         border: none;
         border-radius: 6px;
-        background: #333;
-        color: #fff;
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
         cursor: pointer;
         font-size: 12px;
         transition: background 0.15s;
       }
 
       .widget-btn:hover {
-        background: #444;
+        background: var(--border-color);
       }
 
       .widget-btn.primary {
-        background: #0066ff;
+        background: var(--accent-color);
+        color: white;
       }
 
       .widget-btn.primary:hover {
-        background: #0052cc;
+        background: var(--accent-hover);
       }
 
       .widget-btn:disabled {
@@ -446,46 +642,46 @@
       .converter-input {
         flex: 1;
         padding: 8px 10px;
-        border: 1px solid #333;
+        border: 1px solid var(--border-color);
         border-radius: 6px;
-        background: #1a1a1a;
-        color: #fff;
+        background: var(--code-bg);
+        color: var(--text-primary);
         font-size: 14px;
         font-family: "SF Mono", monospace;
       }
 
       .converter-input:focus {
         outline: none;
-        border-color: #0066ff;
+        border-color: var(--accent-color);
       }
 
       .converter-select {
         padding: 8px 10px;
-        border: 1px solid #333;
+        border: 1px solid var(--border-color);
         border-radius: 6px;
-        background: #1a1a1a;
-        color: #fff;
+        background: var(--code-bg);
+        color: var(--text-primary);
         font-size: 12px;
         min-width: 100px;
       }
 
       .converter-select:focus {
         outline: none;
-        border-color: #0066ff;
+        border-color: var(--accent-color);
       }
 
       .converter-arrow {
-        color: #666;
+        color: var(--text-muted);
         font-size: 16px;
       }
 
       .converter-result {
         font-size: 18px;
         font-family: "SF Mono", monospace;
-        color: #0066ff;
+        color: var(--accent-color);
         text-align: center;
         padding: 8px;
-        background: #1a1a1a;
+        background: var(--code-bg);
         border-radius: 6px;
         margin-top: 8px;
       }
@@ -501,21 +697,21 @@
         padding: 4px 8px;
         border: none;
         border-radius: 4px;
-        background: #333;
-        color: #888;
+        background: var(--bg-tertiary);
+        color: var(--text-secondary);
         font-size: 10px;
         cursor: pointer;
         text-transform: uppercase;
       }
 
       .converter-tab:hover {
-        background: #444;
-        color: #fff;
+        background: var(--border-color);
+        color: var(--text-primary);
       }
 
       .converter-tab.active {
-        background: #0066ff;
-        color: #fff;
+        background: var(--accent-color);
+        color: white;
       }
 
       /* World Clock Widget */
@@ -530,7 +726,7 @@
         justify-content: space-between;
         align-items: center;
         padding: 8px 0;
-        border-bottom: 1px solid #333;
+        border-bottom: 1px solid var(--border-color);
       }
 
       .worldclock-city:last-child {
@@ -539,19 +735,114 @@
 
       .worldclock-city-name {
         font-size: 12px;
-        color: #888;
+        color: var(--text-secondary);
       }
 
       .worldclock-city-time {
         font-size: 18px;
         font-family: "SF Mono", "Monaco", "Menlo", monospace;
-        color: #fff;
+        color: var(--text-primary);
       }
 
       .worldclock-city-date {
         font-size: 10px;
-        color: #666;
+        color: var(--text-muted);
         text-align: right;
+      }
+
+      /* WiFi Widget */
+      .wifi-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px;
+        background: var(--code-bg);
+        border-radius: 8px;
+        margin-bottom: 12px;
+      }
+
+      .wifi-status-icon {
+        font-size: 24px;
+      }
+
+      .wifi-status-info {
+        flex: 1;
+      }
+
+      .wifi-status-label {
+        font-size: 11px;
+        color: var(--text-muted);
+        text-transform: uppercase;
+      }
+
+      .wifi-status-network {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--text-primary);
+      }
+
+      .wifi-status-badge {
+        font-size: 10px;
+        padding: 3px 8px;
+        border-radius: 10px;
+        font-weight: 500;
+      }
+
+      .wifi-status-badge.connected {
+        background: #1a3a1a;
+        color: #40c040;
+      }
+
+      .wifi-status-badge.disconnected {
+        background: #3a2a1a;
+        color: #f0a020;
+      }
+
+      .wifi-status-badge.off {
+        background: #3a1a1a;
+        color: #ff6b6b;
+      }
+
+      [data-theme="light"] .wifi-status-badge.connected {
+        background: #e0ffe0;
+        color: #006600;
+      }
+
+      [data-theme="light"] .wifi-status-badge.disconnected {
+        background: #fff0e0;
+        color: #996600;
+      }
+
+      [data-theme="light"] .wifi-status-badge.off {
+        background: #ffe0e0;
+        color: #cc0000;
+      }
+
+      .wifi-networks-list {
+        max-height: 150px;
+        overflow-y: auto;
+      }
+
+      .wifi-network-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border-color);
+        font-size: 12px;
+      }
+
+      .wifi-network-item:last-child {
+        border-bottom: none;
+      }
+
+      .wifi-network-item.current {
+        color: var(--accent-color);
+        font-weight: 500;
+      }
+
+      .wifi-network-icon {
+        font-size: 14px;
       }
 
       /* Settings Panel */
@@ -569,8 +860,8 @@
       }
 
       .settings-panel {
-        background: #252525;
-        border: 1px solid #333;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
         border-radius: 12px;
         padding: 20px;
         width: 340px;
@@ -587,13 +878,13 @@
       .settings-header h2 {
         font-size: 16px;
         font-weight: 600;
-        color: #fff;
+        color: var(--text-primary);
       }
 
       .settings-close {
         background: none;
         border: none;
-        color: #888;
+        color: var(--text-secondary);
         font-size: 20px;
         cursor: pointer;
         padding: 4px 8px;
@@ -601,8 +892,8 @@
       }
 
       .settings-close:hover {
-        color: #fff;
-        background: #333;
+        color: var(--text-primary);
+        background: var(--bg-tertiary);
       }
 
       .settings-row {
@@ -612,7 +903,7 @@
       .settings-row label {
         display: block;
         font-size: 12px;
-        color: #888;
+        color: var(--text-secondary);
         margin-bottom: 6px;
       }
 
@@ -620,10 +911,10 @@
       .settings-row select {
         width: 100%;
         padding: 10px 12px;
-        border: 1px solid #333;
+        border: 1px solid var(--border-color);
         border-radius: 6px;
-        background: #1a1a1a;
-        color: #e0e0e0;
+        background: var(--code-bg);
+        color: var(--text-primary);
         font-size: 13px;
         font-family: inherit;
       }
@@ -631,22 +922,22 @@
       .settings-row input:focus,
       .settings-row select:focus {
         outline: none;
-        border-color: #0066ff;
+        border-color: var(--accent-color);
       }
 
       .settings-hint {
         font-size: 11px;
-        color: #666;
+        color: var(--text-muted);
         margin-top: 4px;
       }
 
       .settings-row .shortcut-display {
         font-family: "SF Mono", monospace;
-        background: #1a1a1a;
+        background: var(--code-bg);
         padding: 8px 12px;
         border-radius: 6px;
         font-size: 12px;
-        color: #0066ff;
+        color: var(--accent-color);
         display: inline-block;
       }
 
@@ -666,45 +957,284 @@
       }
 
       .settings-btn.secondary {
-        background: #333;
-        color: #fff;
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
       }
 
       .settings-btn.secondary:hover {
-        background: #444;
+        background: var(--border-color);
       }
 
       .settings-btn.primary {
-        background: #0066ff;
-        color: #fff;
+        background: var(--accent-color);
+        color: white;
       }
 
       .settings-btn.primary:hover {
-        background: #0052cc;
+        background: var(--accent-hover);
+      }
+
+      /* Theme Toggle */
+      .theme-toggle {
+        display: flex;
+        gap: 8px;
+      }
+
+      .theme-option {
+        flex: 1;
+        padding: 10px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background: var(--code-bg);
+        color: var(--text-primary);
+        font-size: 12px;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.15s;
+      }
+
+      .theme-option:hover {
+        border-color: var(--accent-color);
+      }
+
+      .theme-option.active {
+        background: var(--accent-color);
+        color: white;
+        border-color: var(--accent-color);
+      }
+
+      /* Sessions Panel */
+      .sessions-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+      }
+
+      .sessions-panel {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 16px;
+        width: 360px;
+        max-width: 92%;
+        max-height: 80vh;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .sessions-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .sessions-header h2 {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .sessions-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .sessions-btn {
+        padding: 8px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .sessions-btn.primary {
+        background: var(--accent-color);
+        border-color: var(--accent-color);
+        color: white;
+      }
+
+      .sessions-btn.primary:hover {
+        background: var(--accent-hover);
+        border-color: var(--accent-hover);
+      }
+
+      .sessions-btn:hover {
+        background: var(--border-color);
+      }
+
+      .sessions-list {
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .session-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 10px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        background: var(--bg-primary);
+      }
+
+      .session-item.active {
+        border-color: var(--accent-color);
+      }
+
+      .session-item-main {
+        flex: 1;
+        min-width: 0;
+        cursor: pointer;
+      }
+
+      .session-item-title {
+        font-size: 12px;
+        color: var(--text-primary);
+        font-weight: 500;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .session-item-meta {
+        font-size: 10px;
+        color: var(--text-secondary);
+        margin-top: 2px;
+      }
+
+      .session-item-actions {
+        display: flex;
+        gap: 6px;
+      }
+
+      .session-icon-btn {
+        background: transparent;
+        border: 1px solid var(--border-color);
+        color: var(--text-secondary);
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .session-icon-btn:hover {
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+      }
+
+      /* Simple modal (used for rename, etc.) */
+      .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 110;
+      }
+
+      .modal-panel {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 16px;
+        width: 320px;
+        max-width: 92%;
+      }
+
+      .modal-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 10px;
+      }
+
+      .modal-input {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 13px;
+        font-family: inherit;
+        outline: none;
+      }
+
+      .modal-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        margin-top: 12px;
+      }
+
+      .modal-btn {
+        padding: 8px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+        font-size: 12px;
+        cursor: pointer;
+      }
+
+      .modal-btn.primary {
+        background: var(--accent-color);
+        border-color: var(--accent-color);
+        color: white;
       }
     </style>
   </head>
   <body>
     <div class="header">
-      <div class="header-left">
-        <h1>
-          <svg viewBox="0 0 512 416" xmlns="http://www.w3.org/2000/svg">
-            <path
-              d="M181.33 266.143c0-11.497 9.32-20.818 20.818-20.818 11.498 0 20.819 9.321 20.819 20.818v38.373c0 11.497-9.321 20.818-20.819 20.818-11.497 0-20.818-9.32-20.818-20.818v-38.373zM308.807 245.325c-11.477 0-20.798 9.321-20.798 20.818v38.373c0 11.497 9.32 20.818 20.798 20.818 11.497 0 20.818-9.32 20.818-20.818v-38.373c0-11.497-9.32-20.818-20.818-20.818z"
-            />
-            <path
-              d="M512.002 246.393v57.384c-.02 7.411-3.696 14.638-9.67 19.011C431.767 374.444 344.695 416 256 416c-98.138 0-196.379-56.542-246.33-93.21-5.975-4.374-9.65-11.6-9.671-19.012v-57.384a35.347 35.347 0 016.857-20.922l15.583-21.085c8.336-11.312 20.757-14.31 33.98-14.31 4.988-56.953 16.794-97.604 45.024-127.354C155.194 5.77 226.56 0 256 0c29.441 0 100.807 5.77 154.557 62.722 28.19 29.75 40.036 70.401 45.025 127.354 13.263 0 25.602 2.936 33.958 14.31l15.583 21.127c4.476 6.077 6.878 13.345 6.878 20.88zm-97.666-26.075c-.677-13.058-11.292-18.19-22.338-21.824-11.64 7.309-25.848 10.183-39.46 10.183-14.454 0-41.432-3.47-63.872-25.869-5.667-5.625-9.527-14.454-12.155-24.247a212.902 212.902 0 00-20.469-1.088c-6.098 0-13.099.349-20.551 1.088-2.628 9.793-6.509 18.622-12.155 24.247-22.4 22.4-49.418 25.87-63.872 25.87-13.612 0-27.86-2.855-39.501-10.184-11.005 3.613-21.558 8.828-22.277 21.824-1.17 24.555-1.272 49.11-1.375 73.645-.041 12.318-.082 24.658-.288 36.976.062 7.166 4.374 13.818 10.882 16.774 52.97 24.124 103.045 36.278 149.137 36.278 46.01 0 96.085-12.154 149.014-36.278 6.508-2.956 10.84-9.608 10.881-16.774.637-36.832.124-73.809-1.642-110.62h.041z"
-            />
-          </svg>
-          Copilot Bar
-        </h1>
-        <span class="model-badge" id="modelBadge">loading...</span>
+      <div class="header-row">
+        <div class="header-title">
+          <h1>
+            <svg viewBox="0 0 512 416" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M181.33 266.143c0-11.497 9.32-20.818 20.818-20.818 11.498 0 20.819 9.321 20.819 20.818v38.373c0 11.497-9.321 20.818-20.819 20.818-11.497 0-20.818-9.32-20.818-20.818v-38.373zM308.807 245.325c-11.477 0-20.798 9.321-20.798 20.818v38.373c0 11.497 9.32 20.818 20.798 20.818 11.497 0 20.818-9.32 20.818-20.818v-38.373c0-11.497-9.32-20.818-20.818-20.818z"
+              />
+              <path
+                d="M512.002 246.393v57.384c-.02 7.411-3.696 14.638-9.67 19.011C431.767 374.444 344.695 416 256 416c-98.138 0-196.379-56.542-246.33-93.21-5.975-4.374-9.65-11.6-9.671-19.012v-57.384a35.347 35.347 0 016.857-20.922l15.583-21.085c8.336-11.312 20.757-14.31 33.98-14.31 4.988-56.953 16.794-97.604 45.024-127.354C155.194 5.77 226.56 0 256 0c29.441 0 100.807 5.77 154.557 62.722 28.19 29.75 40.036 70.401 45.025 127.354 13.263 0 25.602 2.936 33.958 14.31l15.583 21.127c4.476 6.077 6.878 13.345 6.878 20.88zm-97.666-26.075c-.677-13.058-11.292-18.19-22.338-21.824-11.64 7.309-25.848 10.183-39.46 10.183-14.454 0-41.432-3.47-63.872-25.869-5.667-5.625-9.527-14.454-12.155-24.247a212.902 212.902 0 00-20.469-1.088c-6.098 0-13.099.349-20.551 1.088-2.628 9.793-6.509 18.622-12.155 24.247-22.4 22.4-49.418 25.87-63.872 25.87-13.612 0-27.86-2.855-39.501-10.184-11.005 3.613-21.558 8.828-22.277 21.824-1.17 24.555-1.272 49.11-1.375 73.645-.041 12.318-.082 24.658-.288 36.976.062 7.166 4.374 13.818 10.882 16.774 52.97 24.124 103.045 36.278 149.137 36.278 46.01 0 96.085-12.154 149.014-36.278 6.508-2.956 10.84-9.608 10.881-16.774.637-36.832.124-73.809-1.642-110.62h.041z"
+              />
+            </svg>
+            Copilot Bar
+          </h1>
+        </div>
+        <div class="header-actions">
+          <button class="config-btn" id="screenshotBtn" title="Capture screenshot">📷</button>
+          <button class="config-btn" id="clearBtn" title="Clear chat">🗑️</button>
+          <button class="config-btn" id="configBtn" title="Settings">⚙️</button>
+          <button class="config-btn" id="quitBtn" title="Quit app">✕</button>
+        </div>
       </div>
-      <div class="header-actions">
-        <button class="config-btn" id="screenshotBtn" title="Capture screenshot">📷</button>
-        <button class="config-btn" id="clearBtn" title="Clear chat">🗑️</button>
-        <button class="config-btn" id="configBtn" title="Settings">⚙️</button>
-        <button class="config-btn" id="quitBtn" title="Quit app">✕</button>
+      <div class="header-row header-meta">
+        <button class="pill" id="sessionBadge" type="button" title="Sessions">
+          <span class="pill-label" id="sessionBadgeLabel">Sessions</span>
+          <span class="pill-caret" aria-hidden="true">▾</span>
+        </button>
+        <span class="pill" id="modelBadge">loading...</span>
       </div>
     </div>
 
@@ -723,70 +1253,221 @@
     </div>
 
     <div class="input-area">
-      <textarea
-        id="input"
-        placeholder="Ask Copilot..."
-        rows="1"
-        autofocus
-      ></textarea>
+      <div class="input-stack">
+        <textarea
+          id="input"
+          placeholder="Ask Copilot... (try /help)"
+          rows="1"
+          autofocus
+        ></textarea>
+        <div class="command-hint" id="commandHint"></div>
+      </div>
       <button class="send-btn" id="sendBtn">Send</button>
     </div>
 
     <script>
       const { ipcRenderer } = require("electron");
 
-      // Load marked and highlight.js with error handling
-      let marked, hljs;
-      try {
-        marked = require("marked").marked;
-        hljs = require("highlight.js");
+      // Markdown rendering
+      let marked = {
+        parse: (text) =>
+          text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/\n/g, "<br>"),
+      };
+      let hljs = null;
+      let markdownInitPromise = null;
 
-        // Configure marked with syntax highlighting
-        marked.setOptions({
-          highlight: function (code, lang) {
-            if (lang && hljs.getLanguage(lang)) {
-              try {
-                return hljs.highlight(code, { language: lang }).value;
-              } catch (e) {}
-            }
-            return hljs.highlightAuto(code).value;
-          },
-          breaks: true,
-          gfm: true,
-        });
-        console.log("Markdown libraries loaded");
-      } catch (err) {
-        console.error("Failed to load markdown libraries:", err);
-        // Fallback: marked will just return plain text
-        marked = { parse: (text) => text.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>") };
+      async function initMarkdown() {
+        try {
+          const { pathToFileURL } = require("node:url");
+
+          const markedPath = require.resolve("marked");
+          const hljsPath = require.resolve("highlight.js");
+
+          const markedModule = await import(pathToFileURL(markedPath).href);
+          const hljsModule = await import(pathToFileURL(hljsPath).href);
+
+          const markedFn = markedModule.marked ?? markedModule.default ?? markedModule;
+          const hljsLib = hljsModule.default ?? hljsModule;
+
+          if (typeof markedFn?.setOptions === "function") {
+            markedFn.setOptions({
+              highlight: function (code, lang) {
+                if (hljsLib && lang && typeof hljsLib.getLanguage === "function" && hljsLib.getLanguage(lang)) {
+                  try {
+                    return hljsLib.highlight(code, { language: lang }).value;
+                  } catch (e) {}
+                }
+                if (hljsLib && typeof hljsLib.highlightAuto === "function") {
+                  return hljsLib.highlightAuto(code).value;
+                }
+                return code;
+              },
+              breaks: true,
+              gfm: true,
+            });
+          }
+
+          marked = markedFn;
+          hljs = hljsLib;
+          console.log("Markdown libraries loaded");
+        } catch (err) {
+          console.error("Failed to load markdown libraries:", err);
+        }
       }
 
       const input = document.getElementById("input");
       const sendBtn = document.getElementById("sendBtn");
       const chatContainer = document.getElementById("chatContainer");
       let emptyState = document.getElementById("emptyState");
+      const commandHint = document.getElementById("commandHint");
       const configBtn = document.getElementById("configBtn");
       const clearBtn = document.getElementById("clearBtn");
       const quitBtn = document.getElementById("quitBtn");
       const screenshotBtn = document.getElementById("screenshotBtn");
       const modelBadge = document.getElementById("modelBadge");
+      const sessionBadge = document.getElementById("sessionBadge");
+      const sessionBadgeLabel = document.getElementById("sessionBadgeLabel");
 
       let isLoading = false;
+      let activeSession = { id: null, title: "Chat" };
 
-      // Load and display current model
+      // Load and display current model + theme
       async function loadConfig() {
         try {
           const config = await ipcRenderer.invoke("get-config");
           modelBadge.textContent = config.model || "unknown";
+          // Apply saved theme
+          applyTheme(config.theme || "dark");
         } catch (err) {
           modelBadge.textContent = "error";
         }
       }
-      loadConfig();
 
-      function addMessage(content, type) {
+      // Theme handling
+      function applyTheme(theme) {
+        document.documentElement.setAttribute("data-theme", theme);
+      }
+
+      // Load chat history on startup
+      async function loadChatHistory() {
+        try {
+          const history = await ipcRenderer.invoke("get-chat-history", activeSession.id || undefined, 100);
+          if (history && history.length > 0) {
+            // Remove empty state
+            if (emptyState) {
+              emptyState.remove();
+              emptyState = null;
+            }
+            // Restore messages
+            history.forEach((msg) => {
+              addMessage(msg.content, msg.role, false); // false = don't persist again
+            });
+          }
+        } catch (err) {
+          console.error("Failed to load chat history:", err);
+        }
+      }
+
+      function renderEmptyState() {
+        chatContainer.innerHTML = `
+          <div class="empty-state" id="emptyState">
+            <svg viewBox="0 0 512 416" xmlns="http://www.w3.org/2000/svg">
+              <path d="M181.33 266.143c0-11.497 9.32-20.818 20.818-20.818 11.498 0 20.819 9.321 20.819 20.818v38.373c0 11.497-9.321 20.818-20.819 20.818-11.497 0-20.818-9.32-20.818-20.818v-38.373zM308.807 245.325c-11.477 0-20.798 9.321-20.798 20.818v38.373c0 11.497 9.32 20.818 20.798 20.818 11.497 0 20.818-9.32 20.818-20.818v-38.373c0-11.497-9.32-20.818-20.818-20.818z" />
+              <path d="M512.002 246.393v57.384c-.02 7.411-3.696 14.638-9.67 19.011C431.767 374.444 344.695 416 256 416c-98.138 0-196.379-56.542-246.33-93.21-5.975-4.374-9.65-11.6-9.671-19.012v-57.384a35.347 35.347 0 016.857-20.922l15.583-21.085c8.336-11.312 20.757-14.31 33.98-14.31 4.988-56.953 16.794-97.604 45.024-127.354C155.194 5.77 226.56 0 256 0c29.441 0 100.807 5.77 154.557 62.722 28.19 29.75 40.036 70.401 45.025 127.354 13.263 0 25.602 2.936 33.958 14.31l15.583 21.127c4.476 6.077 6.878 13.345 6.878 20.88zm-97.666-26.075c-.677-13.058-11.292-18.19-22.338-21.824-11.64 7.309-25.848 10.183-39.46 10.183-14.454 0-41.432-3.47-63.872-25.869-5.667-5.625-9.527-14.454-12.155-24.247a212.902 212.902 0 00-20.469-1.088c-6.098 0-13.099.349-20.551 1.088-2.628 9.793-6.509 18.622-12.155 24.247-22.4 22.4-49.418 25.87-63.872 25.87-13.612 0-27.86-2.855-39.501-10.184-11.005 3.613-21.558 8.828-22.277 21.824-1.17 24.555-1.272 49.11-1.375 73.645-.041 12.318-.082 24.658-.288 36.976.062 7.166 4.374 13.818 10.882 16.774 52.97 24.124 103.045 36.278 149.137 36.278 46.01 0 96.085-12.154 149.014-36.278 6.508-2.956 10.84-9.608 10.881-16.774.637-36.832.124-73.809-1.642-110.62h.041z" />
+            </svg>
+            <p>Ask me anything</p>
+          </div>
+        `;
+        emptyState = document.getElementById("emptyState");
+      }
+
+      function setSessionBadge(title) {
+        const t = (title && String(title).trim()) ? String(title).trim() : "";
+        const label = t ? `Sessions · ${t}` : "Sessions";
+        sessionBadgeLabel.textContent = label;
+        sessionBadge.title = t ? `Sessions: ${t}` : "Sessions";
+      }
+
+      function escapeHtml(unsafe) {
+        return String(unsafe ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function openTextModal({ title, initialValue, placeholder, confirmText }) {
+        return new Promise((resolve) => {
+          const overlay = document.createElement("div");
+          overlay.className = "modal-overlay";
+          overlay.tabIndex = -1;
+          overlay.innerHTML = `
+            <div class="modal-panel">
+              <div class="modal-title">${escapeHtml(title)}</div>
+              <input class="modal-input" id="modalInput" type="text" />
+              <div class="modal-actions">
+                <button class="modal-btn" id="modalCancel" type="button">Cancel</button>
+                <button class="modal-btn primary" id="modalConfirm" type="button">${escapeHtml(confirmText || "Save")}</button>
+              </div>
+            </div>
+          `;
+          document.body.appendChild(overlay);
+
+          const inputEl = overlay.querySelector("#modalInput");
+          const cancelBtn = overlay.querySelector("#modalCancel");
+          const confirmBtn = overlay.querySelector("#modalConfirm");
+
+          inputEl.value = initialValue || "";
+          inputEl.placeholder = placeholder || "";
+          inputEl.focus();
+          inputEl.select();
+
+          const close = (value) => {
+            overlay.remove();
+            resolve(value);
+          };
+
+          cancelBtn.onclick = () => close(null);
+          overlay.onclick = (e) => {
+            if (e.target === overlay) close(null);
+          };
+          confirmBtn.onclick = () => close(inputEl.value);
+          overlay.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") close(null);
+            if (e.key === "Enter") close(inputEl.value);
+          });
+        });
+      }
+
+      async function bootstrap() {
+        input.disabled = true;
+        sendBtn.disabled = true;
+
+        markdownInitPromise = initMarkdown();
+        await markdownInitPromise;
+        await loadConfig();
+        try {
+          activeSession = await ipcRenderer.invoke("get-active-session");
+          setSessionBadge(activeSession.title);
+        } catch (e) {
+          // ignore
+        }
+        await loadChatHistory();
+
+        input.disabled = false;
+        sendBtn.disabled = false;
+        input.focus();
+      }
+
+      function addMessage(content, type, persist = true) {
         if (emptyState) {
           emptyState.remove();
+          emptyState = null;
         }
 
         const msg = document.createElement("div");
@@ -795,7 +1476,13 @@
         // Render markdown for assistant messages, plain text for user
         if (type === "assistant" && marked) {
           try {
-            msg.innerHTML = typeof marked === "function" ? marked(content) : marked.parse(content);
+            if (typeof marked?.parse === "function") {
+              msg.innerHTML = marked.parse(content);
+            } else if (typeof marked === "function") {
+              msg.innerHTML = marked(content);
+            } else {
+              msg.innerHTML = content;
+            }
           } catch (e) {
             msg.textContent = content;
           }
@@ -805,6 +1492,12 @@
 
         chatContainer.appendChild(msg);
         chatContainer.scrollTop = chatContainer.scrollHeight;
+
+        // Persist to database (unless loading from history)
+        if (persist && (type === "user" || type === "assistant" || type === "error")) {
+          ipcRenderer.invoke("add-chat-message", type, content, activeSession.id || undefined).catch(console.error);
+        }
+
         return msg;
       }
 
@@ -822,9 +1515,338 @@
         if (indicator) indicator.remove();
       }
 
+      const slashCommands = [
+        { command: "/help", description: "Show commands, features, and examples" },
+        { command: "/new", description: "Start a new chat session" },
+        { command: "/sessions", description: "Open chat sessions" },
+        { command: "/rename", description: "Rename current chat (usage: /rename My Chat)" },
+        { command: "/switch", description: "Switch chat (usage: /switch 3 or /switch My)" },
+      ];
+
+      function renderCommandHint(items) {
+        if (!items || items.length === 0) {
+          commandHint.style.display = "none";
+          commandHint.innerHTML = "";
+          return;
+        }
+
+        commandHint.style.display = "block";
+        commandHint.innerHTML = `
+          <div class="command-hint-header">Slash commands (Tab to autocomplete)</div>
+          ${items
+            .map(
+              (c) => `
+            <button class="command-hint-item" type="button" data-command="${c.command}">
+              <code>${c.command}</code>
+              <span class="command-hint-desc">${c.description}</span>
+            </button>
+          `
+            )
+            .join("")}
+        `;
+
+        commandHint.querySelectorAll("[data-command]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const cmd = btn.getAttribute("data-command");
+            if (!cmd) return;
+            input.value = cmd;
+            input.focus();
+            updateCommandHint();
+          });
+        });
+      }
+
+      function updateCommandHint() {
+        const value = input.value;
+        if (!value.startsWith("/")) {
+          renderCommandHint([]);
+          return;
+        }
+
+        const query = value.slice(1).trim().toLowerCase();
+        const matches = slashCommands
+          .filter((c) => c.command.slice(1).toLowerCase().startsWith(query))
+          .slice(0, 8);
+        renderCommandHint(matches.length ? matches : slashCommands);
+      }
+
+      function getHelpMarkdown() {
+        return `# /help
+
+Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show widgets**.
+
+## Slash Commands
+- \`/help\` — Show commands, features, and examples
+- \`/new\` — Start a new chat session
+- \`/sessions\` — Open chat sessions
+- \`/rename <title>\` — Rename the current chat session
+- \`/switch <id|title>\` — Switch to another chat session
+
+## Chat & AI
+- Ask questions or request help: “Explain this error”, “Summarize these notes…”
+- Markdown rendering: code blocks and formatting render automatically.
+- Chat history persists across sessions.
+
+## System Controls (macOS)
+- Volume: “Set volume to 50%”, “Mute my computer”
+- Brightness (optional): \`brew install brightness\`, then “Set brightness to 80%”
+- Do Not Disturb / Focus: “Turn on do not disturb”, “Is focus mode enabled?”
+- Wi‑Fi: “Turn off WiFi”, “What network am I connected to?”, “Show my saved networks”
+- App launcher: “Open Safari”, “Open Terminal”
+- Shell: “Run \`ls -la ~/Documents\`”, “Show disk usage”
+
+## Widgets & Productivity
+- Timers: “Start a timer”, “Set a 5 minute countdown”, “Start a Pomodoro”
+- World clock: “What time is it in Tokyo?”, “Show me a world clock”
+- Unit converter: “Convert 100 pounds to kilograms”, “Open the temperature converter”
+- Wi‑Fi widget: “Show my saved networks”
+
+## Screenshot Analysis
+- Use the 📸 button or type: “Take a screenshot” / “Capture my screen and tell me what you see”
+- If configured, screenshots can be uploaded via S3-compatible storage (\`.env.example\`).
+
+## Reminders
+- “Remind me to take a break in 30 minutes”
+- “What reminders do I have?”
+
+## Settings & Shortcuts
+- Open settings (⚙️) to change model, theme, and global shortcut.
+- Default shortcut: \`Cmd+Shift+T\` (macOS) / \`Ctrl+Shift+T\` (Windows/Linux)
+`;
+      }
+
+      async function switchToSession(sessionId) {
+        const session = await ipcRenderer.invoke("set-active-session", sessionId);
+        activeSession = session;
+        setSessionBadge(activeSession.title);
+        renderEmptyState();
+        await loadChatHistory();
+      }
+
+      async function createAndSwitchSession(title) {
+        const session = await ipcRenderer.invoke("create-session", title);
+        activeSession = session;
+        setSessionBadge(activeSession.title);
+        renderEmptyState();
+        await loadChatHistory();
+      }
+
+      async function showSessions() {
+        const overlay = document.createElement("div");
+        overlay.className = "sessions-overlay";
+        overlay.tabIndex = -1;
+        overlay.innerHTML = `
+          <div class="sessions-panel">
+            <div class="sessions-header">
+              <h2>Chats</h2>
+              <button class="settings-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="sessions-actions">
+              <button class="sessions-btn primary" id="newChatBtn">New chat</button>
+              <button class="sessions-btn" id="refreshChatsBtn">Refresh</button>
+            </div>
+            <div class="sessions-list" id="sessionsList"></div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+        overlay.focus();
+
+        const closeBtn = overlay.querySelector(".settings-close");
+        const listEl = overlay.querySelector("#sessionsList");
+        const newChatBtn = overlay.querySelector("#newChatBtn");
+        const refreshBtn = overlay.querySelector("#refreshChatsBtn");
+
+        const close = () => overlay.remove();
+        closeBtn.onclick = close;
+        overlay.onclick = (e) => {
+          if (e.target === overlay) close();
+        };
+
+        function formatTimestamp(ts) {
+          if (!ts) return "";
+          const iso = String(ts).includes("T") ? String(ts) : String(ts).replace(" ", "T");
+          const d = new Date(iso);
+          if (Number.isNaN(d.getTime())) return String(ts);
+          const diff = Date.now() - d.getTime();
+          if (diff < 60 * 1000) return "just now";
+          if (diff < 60 * 60 * 1000) return `${Math.round(diff / (60 * 1000))}m ago`;
+          if (diff < 24 * 60 * 60 * 1000) return `${Math.round(diff / (60 * 60 * 1000))}h ago`;
+          return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+        }
+
+        async function renderList() {
+          const sessions = await ipcRenderer.invoke("list-sessions", 50);
+          listEl.innerHTML = sessions
+            .map((s) => {
+              const active = s.id === activeSession.id ? "active" : "";
+              const meta = formatTimestamp(s.last_message_at || s.updated_at || s.created_at || "");
+              const safeTitle = escapeHtml(s.title || "Chat");
+              return `
+                <div class="session-item ${active}" data-session-id="${s.id}">
+                  <div class="session-item-main" data-action="switch" title="${safeTitle}">
+                    <div class="session-item-title">${safeTitle}</div>
+                    <div class="session-item-meta">#${s.id}${meta ? " • " + meta : ""}</div>
+                  </div>
+                  <div class="session-item-actions">
+                    <button class="session-icon-btn" data-action="rename" title="Rename">✎</button>
+                    <button class="session-icon-btn" data-action="delete" title="Delete">🗑️</button>
+                  </div>
+                </div>
+              `;
+            })
+            .join("");
+
+          listEl.querySelectorAll("[data-session-id]").forEach((row) => {
+            const id = Number.parseInt(row.getAttribute("data-session-id"), 10);
+            row.querySelectorAll("[data-action]").forEach((el) => {
+              el.addEventListener("click", async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const action = el.getAttribute("data-action");
+                if (action === "switch") {
+                  await switchToSession(id);
+                  close();
+                } else if (action === "rename") {
+                  const current = row.querySelector(".session-item-title")?.textContent || "Chat";
+                  const next = await openTextModal({
+                    title: "Rename session",
+                    initialValue: current,
+                    placeholder: "Session name",
+                    confirmText: "Rename",
+                  });
+                  if (next && next.trim()) {
+                    await ipcRenderer.invoke("rename-session", id, next.trim());
+                    if (id === activeSession.id) {
+                      activeSession.title = next.trim();
+                      setSessionBadge(activeSession.title);
+                    }
+                    await renderList();
+                  }
+                } else if (action === "delete") {
+                  if (confirm("Delete this chat? This will remove its messages.")) {
+                    await ipcRenderer.invoke("delete-session", id);
+                    activeSession = await ipcRenderer.invoke("get-active-session");
+                    setSessionBadge(activeSession.title);
+                    renderEmptyState();
+                    await loadChatHistory();
+                    await renderList();
+                  }
+                }
+              });
+            });
+          });
+        }
+
+        newChatBtn.onclick = async () => {
+          await createAndSwitchSession();
+          close();
+        };
+        refreshBtn.onclick = renderList;
+
+        overlay.addEventListener("keydown", (e) => {
+          if (e.key === "Escape") close();
+        });
+
+        await renderList();
+      }
+
+      async function handleSlashCommand(rawPrompt) {
+        const trimmed = rawPrompt.trim();
+        if (!trimmed.startsWith("/")) return false;
+
+        const parts = trimmed.slice(1).trim().split(/\s+/);
+        const command = parts[0]?.toLowerCase();
+        const args = parts.slice(1);
+        if (!command) {
+          addMessage("Available commands: " + slashCommands.map((c) => c.command).join(", ") + "\n\nTry `/help`.", "assistant");
+          return true;
+        }
+
+        if (command === "help") {
+          addMessage(getHelpMarkdown(), "assistant");
+          return true;
+        }
+
+        if (command === "sessions") {
+          showSessions().catch(console.error);
+          return true;
+        }
+
+        if (command === "new") {
+          createAndSwitchSession().catch((e) => addMessage(`Error: ${e.message || e}`, "error"));
+          return true;
+        }
+
+        if (command === "rename") {
+          if (!activeSession.id) {
+            addMessage("No active session yet. Try again in a moment.", "error");
+            return true;
+          }
+          const title = args.join(" ").trim();
+          if (!title) {
+            const next = await openTextModal({
+              title: "Rename session",
+              initialValue: activeSession.title || "",
+              placeholder: "Session name",
+              confirmText: "Rename",
+            });
+            if (next && next.trim()) {
+              ipcRenderer.invoke("rename-session", activeSession.id, next.trim()).then(() => {
+                activeSession.title = next.trim();
+                setSessionBadge(activeSession.title);
+              });
+            }
+            return true;
+          }
+          ipcRenderer.invoke("rename-session", activeSession.id, title).then(() => {
+            activeSession.title = title;
+            setSessionBadge(activeSession.title);
+          });
+          return true;
+        }
+
+        if (command === "switch") {
+          const target = args.join(" ").trim();
+          if (!target) {
+            addMessage("Usage: `/switch 3` or `/switch My Chat`", "assistant");
+            return true;
+          }
+          const asId = Number.parseInt(target, 10);
+          if (!Number.isNaN(asId) && asId > 0) {
+            switchToSession(asId).catch((e) => addMessage(`Error: ${e.message || e}`, "error"));
+            return true;
+          }
+          ipcRenderer.invoke("list-sessions", 50).then((sessions) => {
+            const match = sessions.find((s) => (s.title || "").toLowerCase().startsWith(target.toLowerCase()));
+            if (!match) {
+              addMessage(`No chat found matching "${target}".`, "error");
+              return;
+            }
+            switchToSession(match.id).catch((e) => addMessage(`Error: ${e.message || e}`, "error"));
+          });
+          return true;
+        }
+
+        addMessage(`Unknown command: /${command}. Try /help.`, "error");
+        return true;
+      }
+
       async function sendMessage() {
         const prompt = input.value.trim();
         if (!prompt || isLoading) return;
+
+        // Always hide slash command hint on send
+        renderCommandHint([]);
+
+        // Slash commands (handled locally; no Copilot call required)
+        if (prompt.startsWith("/")) {
+          addMessage(prompt, "user");
+          input.value = "";
+          input.style.height = "auto";
+          await handleSlashCommand(prompt);
+          input.focus();
+          return;
+        }
 
         isLoading = true;
         sendBtn.disabled = true;
@@ -837,7 +1859,7 @@
         showTypingIndicator();
 
         try {
-          const result = await ipcRenderer.invoke("chat", prompt);
+          const result = await ipcRenderer.invoke("chat", prompt, activeSession.id || undefined);
           hideTypingIndicator();
 
           if (result.success) {
@@ -859,6 +1881,23 @@
       sendBtn.addEventListener("click", sendMessage);
 
       input.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          // Close slash command hint (and other transient UI)
+          renderCommandHint([]);
+          return;
+        }
+
+        if (e.key === "Tab" && input.value.startsWith("/")) {
+          const query = input.value.slice(1).trim().toLowerCase();
+          const first = slashCommands.find((c) => c.command.slice(1).toLowerCase().startsWith(query));
+          if (first) {
+            e.preventDefault();
+            input.value = first.command;
+            updateCommandHint();
+            return;
+          }
+        }
+
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
           sendMessage();
@@ -869,7 +1908,19 @@
       input.addEventListener("input", () => {
         input.style.height = "auto";
         input.style.height = Math.min(input.scrollHeight, 120) + "px";
+        updateCommandHint();
       });
+
+      // Hide hint when focus is lost
+      input.addEventListener("blur", () => {
+        setTimeout(() => renderCommandHint([]), 100);
+      });
+
+      input.addEventListener("focus", () => {
+        updateCommandHint();
+      });
+
+      bootstrap();
 
       // Settings panel
       let currentConfig = {};
@@ -893,6 +1944,13 @@
               </select>
             </div>
             <div class="settings-row">
+              <label>Theme</label>
+              <div class="theme-toggle">
+                <button class="theme-option ${currentConfig.theme === 'light' ? 'active' : ''}" data-theme="light">☀️ Light</button>
+                <button class="theme-option ${currentConfig.theme !== 'light' ? 'active' : ''}" data-theme="dark">🌙 Dark</button>
+              </div>
+            </div>
+            <div class="settings-row">
               <label>Global Shortcut</label>
               <div class="shortcut-display" id="shortcutDisplay">${currentConfig.shortcut || "..."}</div>
               <p class="settings-hint">Press any key combination to change</p>
@@ -913,10 +1971,23 @@
         const closeBtn = overlay.querySelector(".settings-close");
         const cancelBtn = overlay.querySelector("#settingsCancel");
         const saveBtn = overlay.querySelector("#settingsSave");
+        const themeOptions = overlay.querySelectorAll(".theme-option");
 
         // Set current values
         modelSelect.value = currentConfig.model || "gpt-5-mini";
         let newShortcut = currentConfig.shortcut;
+        let newTheme = currentConfig.theme || "dark";
+
+        // Theme toggle handling
+        themeOptions.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            themeOptions.forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            newTheme = btn.dataset.theme;
+            // Preview theme immediately
+            applyTheme(newTheme);
+          });
+        });
 
         // Shortcut recording
         shortcutInput.addEventListener("keydown", (e) => {
@@ -939,7 +2010,11 @@
         });
 
         // Close handlers
-        const close = () => overlay.remove();
+        const close = () => {
+          // Revert theme if cancelled
+          applyTheme(currentConfig.theme || "dark");
+          overlay.remove();
+        };
         closeBtn.onclick = close;
         cancelBtn.onclick = close;
         overlay.onclick = (e) => {
@@ -958,7 +2033,12 @@
             await ipcRenderer.invoke("set-config", "shortcut", newShortcut);
             currentConfig.shortcut = newShortcut;
           }
-          close();
+          if (newTheme !== currentConfig.theme) {
+            await ipcRenderer.invoke("set-config", "theme", newTheme);
+            currentConfig.theme = newTheme;
+          }
+          applyTheme(newTheme);
+          overlay.remove();
         };
       }
 
@@ -967,18 +2047,15 @@
         showSettings();
       });
 
+      sessionBadge.addEventListener("click", () => {
+        showSessions().catch(console.error);
+      });
+
       // Clear chat
-      clearBtn.addEventListener("click", () => {
-        chatContainer.innerHTML = `
-          <div class="empty-state" id="emptyState">
-            <svg viewBox="0 0 512 416" xmlns="http://www.w3.org/2000/svg">
-              <path d="M181.33 266.143c0-11.497 9.32-20.818 20.818-20.818 11.498 0 20.819 9.321 20.819 20.818v38.373c0 11.497-9.321 20.818-20.819 20.818-11.497 0-20.818-9.32-20.818-20.818v-38.373zM308.807 245.325c-11.477 0-20.798 9.321-20.798 20.818v38.373c0 11.497 9.32 20.818 20.798 20.818 11.497 0 20.818-9.32 20.818-20.818v-38.373c0-11.497-9.32-20.818-20.818-20.818z" />
-              <path d="M512.002 246.393v57.384c-.02 7.411-3.696 14.638-9.67 19.011C431.767 374.444 344.695 416 256 416c-98.138 0-196.379-56.542-246.33-93.21-5.975-4.374-9.65-11.6-9.671-19.012v-57.384a35.347 35.347 0 016.857-20.922l15.583-21.085c8.336-11.312 20.757-14.31 33.98-14.31 4.988-56.953 16.794-97.604 45.024-127.354C155.194 5.77 226.56 0 256 0c29.441 0 100.807 5.77 154.557 62.722 28.19 29.75 40.036 70.401 45.025 127.354 13.263 0 25.602 2.936 33.958 14.31l15.583 21.127c4.476 6.077 6.878 13.345 6.878 20.88zm-97.666-26.075c-.677-13.058-11.292-18.19-22.338-21.824-11.64 7.309-25.848 10.183-39.46 10.183-14.454 0-41.432-3.47-63.872-25.869-5.667-5.625-9.527-14.454-12.155-24.247a212.902 212.902 0 00-20.469-1.088c-6.098 0-13.099.349-20.551 1.088-2.628 9.793-6.509 18.622-12.155 24.247-22.4 22.4-49.418 25.87-63.872 25.87-13.612 0-27.86-2.855-39.501-10.184-11.005 3.613-21.558 8.828-22.277 21.824-1.17 24.555-1.272 49.11-1.375 73.645-.041 12.318-.082 24.658-.288 36.976.062 7.166 4.374 13.818 10.882 16.774 52.97 24.124 103.045 36.278 149.137 36.278 46.01 0 96.085-12.154 149.014-36.278 6.508-2.956 10.84-9.608 10.881-16.774.637-36.832.124-73.809-1.642-110.62h.041z" />
-            </svg>
-            <p>Ask me anything</p>
-          </div>
-        `;
-        emptyState = document.getElementById("emptyState");
+      clearBtn.addEventListener("click", async () => {
+        if (!confirm("Clear messages in this chat?")) return;
+        await ipcRenderer.invoke("clear-chat-history", activeSession.id || undefined);
+        renderEmptyState();
         input.focus();
       });
 
@@ -1444,6 +2521,84 @@
         return widget;
       }
 
+      // WiFi Widget
+      function createWifiWidget(data) {
+        const widget = document.createElement("div");
+        widget.className = "widget";
+        widget.style.maxWidth = "300px";
+
+        const header = document.createElement("div");
+        header.className = "widget-header";
+        header.textContent = "📶 WiFi Networks";
+        widget.appendChild(header);
+
+        // Status section
+        const status = document.createElement("div");
+        status.className = "wifi-status";
+        
+        let statusIcon, statusBadge, networkName;
+        
+        if (!data.enabled) {
+          statusIcon = "📵";
+          statusBadge = '<span class="wifi-status-badge off">OFF</span>';
+          networkName = "WiFi Disabled";
+        } else if (data.connected && data.currentNetwork) {
+          statusIcon = "✅";
+          statusBadge = '<span class="wifi-status-badge connected">Connected</span>';
+          networkName = data.currentNetwork;
+        } else {
+          statusIcon = "⚠️";
+          statusBadge = '<span class="wifi-status-badge disconnected">Not Connected</span>';
+          networkName = "No Network";
+        }
+        
+        status.innerHTML = `
+          <span class="wifi-status-icon">${statusIcon}</span>
+          <div class="wifi-status-info">
+            <div class="wifi-status-label">Current Network</div>
+            <div class="wifi-status-network">${networkName}</div>
+          </div>
+          ${statusBadge}
+        `;
+        widget.appendChild(status);
+
+        // Saved networks list
+        if (data.savedNetworks && data.savedNetworks.length > 0) {
+          const listHeader = document.createElement("div");
+          listHeader.className = "widget-header";
+          listHeader.style.marginTop = "8px";
+          listHeader.textContent = `Saved Networks (${data.savedNetworks.length})`;
+          widget.appendChild(listHeader);
+
+          const list = document.createElement("div");
+          list.className = "wifi-networks-list";
+          
+          data.savedNetworks.forEach((network) => {
+            const isCurrent = network === data.currentNetwork;
+            const item = document.createElement("div");
+            item.className = `wifi-network-item ${isCurrent ? "current" : ""}`;
+            item.innerHTML = `
+              <span class="wifi-network-icon">${isCurrent ? "📶" : "📡"}</span>
+              <span>${network}</span>
+              ${isCurrent ? '<span class="wifi-status-badge connected">Connected</span>' : ""}
+            `;
+            list.appendChild(item);
+          });
+          
+          widget.appendChild(list);
+        }
+
+        // Error message if any
+        if (data.error) {
+          const errorEl = document.createElement("div");
+          errorEl.style.cssText = "color: var(--error-text); font-size: 11px; margin-top: 8px;";
+          errorEl.textContent = data.error;
+          widget.appendChild(errorEl);
+        }
+
+        return widget;
+      }
+
       ipcRenderer.on("render-widget", (event, data) => {
         if (emptyState && emptyState.parentNode) {
           emptyState.remove();
@@ -1471,6 +2626,9 @@
             break;
           case "unitconverter":
             widget = createUnitConverterWidget(data.category);
+            break;
+          case "wifi":
+            widget = createWifiWidget(data);
             break;
         }
 

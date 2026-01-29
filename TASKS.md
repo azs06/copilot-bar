@@ -1,34 +1,50 @@
 # Copilot Bar - Feature Tasks
 
-## Completed
+> **Progress: 12/27 completed (44%)**
+> 
+> █████████░░░░░░░░░░░ 
 
-- [x] **#1** Add global keyboard shortcut to open Copilot Bar
-- [x] **#2** Add reminder tool with native notifications
-- [x] **#3** Add markdown rendering for assistant messages
-- [x] **#5** Add world clock / timezone widget
-- [x] **#9** Add unit converter widget
-- [x] **#10** Add screenshot capture and AI analysis
+## Completed ✅ (12)
 
-## Pending
+| # | Feature | Implementation |
+|---|---------|----------------|
+| 1 | Global keyboard shortcut | Electron globalShortcut |
+| 2 | Reminder tool with notifications | Native macOS notifications |
+| 3 | Markdown rendering | marked + highlight.js |
+| 5 | World clock / timezone widget | Interactive widget |
+| 9 | Unit converter widget | Interactive widget |
+| 10 | Screenshot capture + AI analysis | screencapture + S3 upload |
+| 12 | Do Not Disturb toggle | defaults command |
+| 19 | Chat history persistence | SQLite via sql.js |
+| 20 | Light/dark theme toggle | CSS variables + settings UI |
+| 22 | WiFi toggle (on/off/status) | networksetup command |
+| 26 | List available WiFi networks | airport utility scan |
+| 21 | Chat session management (multiple conversations) | SQLite chat_sessions + session_id |
 
-### Widgets
+## Pending 🚧 (16)
+
+### Widgets (5)
 - [ ] **#4** Add calculator widget
 - [ ] **#6** Add quick notes / sticky notes widget
 - [ ] **#7** Add todo list widget
 - [ ] **#8** Add weather widget
 - [ ] **#16** Add code runner widget (Python/JS)
 
-### Tools & Integrations
+### System Controls (4)
+- [ ] **#23** Add Bluetooth toggle (on/off)
+- [ ] **#24** Add AirDrop toggle (on/off)
+- [ ] **#25** Add window organizer (arrange/tile windows)
+- [ ] **#27** List paired/nearby Bluetooth devices
+
+### Tools & Integrations (4)
 - [ ] **#11** Add clipboard history tool
-- [ ] **#12** Add Do Not Disturb toggle
 - [ ] **#15** Add URL summarizer tool
 - [ ] **#17** Add image drop for AI analysis
 - [ ] **#18** Add Spotify/Apple Music controls
 
-### Voice & Audio
+### Voice & Audio (2)
 - [ ] **#13** Add voice input (speech-to-text)
 - [ ] **#14** Add text-to-speech for responses
 
-### UI & Persistence
-- [ ] **#19** Add chat history persistence
-- [ ] **#20** Add light/dark theme toggle
+### UI & Persistence (1)
+- [x] **#21** Add chat session management (multiple conversations)

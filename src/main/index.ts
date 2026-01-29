@@ -5,7 +5,23 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { existsSync } from "node:fs";
 import { CopilotService } from "./copilot-service.js";
-import { initDb, loadConfig, getConfig, setConfig, getConfigPath, closeDb } from "./database.js";
+import {
+  initDb,
+  loadConfig,
+  getConfig,
+  setConfig,
+  getConfigPath,
+  closeDb,
+  addChatMessage,
+  getChatHistory,
+  clearChatHistory,
+  listChatSessions,
+  createChatSession,
+  renameChatSession,
+  deleteChatSession,
+  getActiveChatSession,
+  setActiveChatSession,
+} from "./database.js";
 import { captureAndUpload } from "./screenshot-service.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -79,9 +95,10 @@ app.whenReady().then(async () => {
   console.log("Copilot service initialized");
 
   // Register IPC handlers BEFORE creating menubar (which preloads window)
-  ipcMain.handle("chat", async (_event, prompt: string) => {
+  ipcMain.handle("chat", async (_event, prompt: string, sessionId?: number) => {
     try {
-      const result = await copilotService.chat(prompt);
+      const sid = typeof sessionId === "number" && sessionId > 0 ? sessionId : getActiveChatSession().id;
+      const result = await copilotService.chat(prompt, sid);
       return { success: true, result };
     } catch (error) {
       return {
@@ -110,6 +127,52 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("get-config-value", (_event, key: string) => {
     return getConfig(key);
+  });
+
+  ipcMain.handle("add-chat-message", (_event, role: string, content: string, sessionId?: number) => {
+    return addChatMessage(role, content, sessionId);
+  });
+
+  ipcMain.handle("get-chat-history", (_event, sessionIdOrLimit?: number, limit?: number) => {
+    // Backward compatible:
+    // - get-chat-history(limit)
+    // - get-chat-history(sessionId, limit)
+    if (typeof sessionIdOrLimit === "number" && typeof limit === "undefined") {
+      return getChatHistory(undefined, sessionIdOrLimit);
+    }
+    return getChatHistory(sessionIdOrLimit, limit);
+  });
+
+  ipcMain.handle("clear-chat-history", (_event, sessionId?: number) => {
+    clearChatHistory(sessionId);
+    return { success: true };
+  });
+
+  // Chat sessions
+  ipcMain.handle("list-sessions", (_event, limit?: number) => {
+    return listChatSessions(limit);
+  });
+
+  ipcMain.handle("get-active-session", () => {
+    return getActiveChatSession();
+  });
+
+  ipcMain.handle("set-active-session", (_event, id: number) => {
+    return setActiveChatSession(id);
+  });
+
+  ipcMain.handle("create-session", (_event, title?: string) => {
+    const id = createChatSession(title);
+    return getActiveChatSession();
+  });
+
+  ipcMain.handle("rename-session", (_event, id: number, title: string) => {
+    renameChatSession(id, title);
+    return { success: true };
+  });
+
+  ipcMain.handle("delete-session", (_event, id: number) => {
+    return deleteChatSession(id);
   });
 
   ipcMain.handle("quit-app", () => {
