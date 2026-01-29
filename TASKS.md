@@ -1,10 +1,10 @@
 # Copilot Bar - Feature Tasks
 
-> **Progress: 12/27 completed (44%)**
-> 
-> █████████░░░░░░░░░░░ 
+> **Progress: 13/26 completed (50%)**
+>
+> ████████████░░░░░░░░░░░ 
 
-## Completed ✅ (12)
+## Completed ✅ (13)
 
 | # | Feature | Implementation |
 |---|---------|----------------|
@@ -19,9 +19,10 @@
 | 20 | Light/dark theme toggle | CSS variables + settings UI |
 | 22 | WiFi toggle (on/off/status) | networksetup command |
 | 26 | List available WiFi networks | airport utility scan |
+| 23 | Bluetooth toggle (on/off/status) | blueutil command |
 | 21 | Chat session management (multiple conversations) | SQLite chat_sessions + session_id |
 
-## Pending 🚧 (16)
+## Pending 🚧 (14)
 
 ### Widgets (5)
 - [ ] **#4** Add calculator widget
@@ -30,8 +31,7 @@
 - [ ] **#8** Add weather widget
 - [ ] **#16** Add code runner widget (Python/JS)
 
-### System Controls (4)
-- [ ] **#23** Add Bluetooth toggle (on/off)
+### System Controls (3)
 - [ ] **#24** Add AirDrop toggle (on/off)
 - [ ] **#25** Add window organizer (arrange/tile windows)
 - [ ] **#27** List paired/nearby Bluetooth devices
@@ -45,6 +45,3 @@
 ### Voice & Audio (2)
 - [ ] **#13** Add voice input (speech-to-text)
 - [ ] **#14** Add text-to-speech for responses
-
-### UI & Persistence (1)
-- [x] **#21** Add chat session management (multiple conversations)
