@@ -165,6 +165,17 @@
         background: var(--bg-tertiary);
         border-color: transparent;
         color: var(--text-secondary);
+        transition: background 0.3s, color 0.3s;
+      }
+
+      #modelBadge.verified {
+        background: rgba(46, 160, 67, 0.15);
+        color: #3fb950;
+      }
+
+      #modelBadge.mismatch {
+        background: rgba(210, 153, 34, 0.15);
+        color: #d29922;
       }
 
       .header-actions {
@@ -535,6 +546,55 @@
         40% {
           transform: scale(1);
         }
+      }
+
+      /* Screenshot thumbnail in chat */
+      .screenshot-container {
+        margin: 4px 0;
+        max-width: 100%;
+      }
+
+      .screenshot-container img {
+        max-width: 100%;
+        max-height: 200px;
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+        cursor: pointer;
+        transition: opacity 0.15s;
+        object-fit: contain;
+        display: block;
+      }
+
+      .screenshot-container img:hover {
+        opacity: 0.85;
+      }
+
+      .screenshot-caption {
+        font-size: 11px;
+        color: var(--text-secondary);
+        margin-top: 4px;
+      }
+
+      /* Full-size screenshot overlay */
+      .screenshot-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.85);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        cursor: zoom-out;
+      }
+
+      .screenshot-overlay img {
+        max-width: 95%;
+        max-height: 95%;
+        border-radius: 4px;
+        object-fit: contain;
       }
 
       .tool-activity {
@@ -1464,6 +1524,44 @@
         input.focus();
       }
 
+      // --- Screenshot helpers ---
+      const SCREENSHOT_PREFIX_RE = /^\[screenshot:(.+?)\]([\s\S]*)$/;
+
+      function parseScreenshotContent(content) {
+        const match = content.match(SCREENSHOT_PREFIX_RE);
+        if (!match) return null;
+        return { imageSrc: match[1], text: match[2].trim() };
+      }
+
+      function getImageSrc(pathOrUrl) {
+        if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
+          return pathOrUrl;
+        }
+        return `file://${pathOrUrl}`;
+      }
+
+      function openScreenshotOverlay(src) {
+        const overlay = document.createElement("div");
+        overlay.className = "screenshot-overlay";
+        const img = document.createElement("img");
+        img.src = src;
+        overlay.appendChild(img);
+        overlay.addEventListener("click", () => overlay.remove());
+        const dismiss = (e) => {
+          if (e.key === "Escape") { overlay.remove(); document.removeEventListener("keydown", dismiss); }
+        };
+        document.addEventListener("keydown", dismiss);
+        document.body.appendChild(overlay);
+      }
+
+      function renderMarkdown(text) {
+        try {
+          if (typeof marked?.parse === "function") return marked.parse(text);
+          if (typeof marked === "function") return marked(text);
+        } catch (e) {}
+        return null;
+      }
+
       function addMessage(content, type, persist = true) {
         if (emptyState) {
           emptyState.remove();
@@ -1473,19 +1571,41 @@
         const msg = document.createElement("div");
         msg.className = `message ${type}`;
 
-        // Render markdown for assistant messages, plain text for user
-        if (type === "assistant" && marked) {
-          try {
-            if (typeof marked?.parse === "function") {
-              msg.innerHTML = marked.parse(content);
-            } else if (typeof marked === "function") {
-              msg.innerHTML = marked(content);
-            } else {
-              msg.innerHTML = content;
-            }
-          } catch (e) {
-            msg.textContent = content;
+        // Check for screenshot content
+        const screenshotData = parseScreenshotContent(content);
+
+        if (screenshotData) {
+          const container = document.createElement("div");
+          container.className = "screenshot-container";
+
+          const img = document.createElement("img");
+          const src = getImageSrc(screenshotData.imageSrc);
+          img.src = src;
+          img.alt = "Screenshot";
+          img.loading = "lazy";
+          img.addEventListener("click", () => openScreenshotOverlay(src));
+          img.addEventListener("error", () => {
+            img.style.display = "none";
+            const fallback = document.createElement("div");
+            fallback.className = "screenshot-caption";
+            fallback.textContent = "Image not found: " + screenshotData.imageSrc;
+            container.appendChild(fallback);
+          });
+          container.appendChild(img);
+
+          if (screenshotData.text) {
+            const caption = document.createElement("div");
+            caption.className = "screenshot-caption";
+            const html = (type === "assistant") ? renderMarkdown(screenshotData.text) : null;
+            if (html) { caption.innerHTML = html; } else { caption.textContent = screenshotData.text; }
+            container.appendChild(caption);
           }
+
+          msg.appendChild(container);
+        } else if (type === "assistant" && marked) {
+          // Render markdown for assistant messages
+          const html = renderMarkdown(content);
+          if (html) { msg.innerHTML = html; } else { msg.textContent = content; }
         } else {
           msg.textContent = content;
         }
@@ -1521,6 +1641,7 @@
         { command: "/sessions", description: "Open chat sessions" },
         { command: "/rename", description: "Rename current chat (usage: /rename My Chat)" },
         { command: "/switch", description: "Switch chat (usage: /switch 3 or /switch My)" },
+        { command: "/compact", description: "Compact conversation (summarize & reset context)" },
       ];
 
       function renderCommandHint(items) {
@@ -1581,6 +1702,7 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
 - \`/sessions\` — Open chat sessions
 - \`/rename <title>\` — Rename the current chat session
 - \`/switch <id|title>\` — Switch to another chat session
+- \`/compact\` — Summarize & compact the conversation to free context space
 
 ## Chat & AI
 - Ask questions or request help: “Explain this error”, “Summarize these notes…”
@@ -1828,9 +1950,58 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
           return true;
         }
 
+        if (command === "compact") {
+          addMessage("Compacting conversation…", "assistant", false);
+          showTypingIndicator();
+          try {
+            const result = await ipcRenderer.invoke("compact-session", activeSession.id || undefined);
+            hideTypingIndicator();
+            if (result.success) {
+              await loadChatHistory();
+            } else {
+              addMessage(`Compaction failed: ${result.error}`, "error");
+            }
+          } catch (e) {
+            hideTypingIndicator();
+            addMessage(`Compaction error: ${e.message}`, "error");
+          }
+          return true;
+        }
+
         addMessage(`Unknown command: /${command}. Try /help.`, "error");
         return true;
       }
+
+      // --- Streaming state ---
+      let streamingBubble = null;
+      let streamingMessageId = null;
+      let streamedContent = "";
+
+      ipcRenderer.on("chat-delta", (_event, delta) => {
+        if (!isLoading) return; // ignore stray deltas
+
+        // New messageId means a new assistant message is starting
+        if (delta.messageId !== streamingMessageId) {
+          streamingMessageId = delta.messageId;
+          streamedContent = "";
+
+          // Replace typing indicator with a streaming bubble
+          hideTypingIndicator();
+
+          if (emptyState) { emptyState.remove(); emptyState = null; }
+          streamingBubble = document.createElement("div");
+          streamingBubble.className = "message assistant";
+          chatContainer.appendChild(streamingBubble);
+        }
+
+        streamedContent += delta.content;
+
+        // Render progressively as plain text (fast), markdown applied on finalize
+        if (streamingBubble) {
+          streamingBubble.textContent = streamedContent;
+          chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+      });
 
       async function sendMessage() {
         const prompt = input.value.trim();
@@ -1853,6 +2024,11 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         sendBtn.disabled = true;
         sendBtn.innerHTML = '<span class="loading"></span>';
 
+        // Reset streaming state
+        streamingBubble = null;
+        streamingMessageId = null;
+        streamedContent = "";
+
         addMessage(prompt, "user");
         input.value = "";
         input.style.height = "auto";
@@ -1864,14 +2040,37 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
           hideTypingIndicator();
 
           if (result.success) {
-            addMessage(result.result, "assistant");
+            if (streamingBubble) {
+              // Finalize: re-render with markdown and persist
+              try {
+                if (typeof marked?.parse === "function") {
+                  streamingBubble.innerHTML = marked.parse(result.result);
+                } else if (typeof marked === "function") {
+                  streamingBubble.innerHTML = marked(result.result);
+                } else {
+                  streamingBubble.textContent = result.result;
+                }
+              } catch (e) {
+                streamingBubble.textContent = result.result;
+              }
+              // Persist to DB
+              ipcRenderer.invoke("add-chat-message", "assistant", result.result, activeSession.id || undefined).catch(console.error);
+            } else {
+              // No streaming deltas arrived — fall back to standard message
+              addMessage(result.result, "assistant");
+            }
           } else {
+            if (streamingBubble) streamingBubble.remove();
             addMessage("Error: " + result.error, "error");
           }
         } catch (err) {
           hideTypingIndicator();
+          if (streamingBubble) streamingBubble.remove();
           addMessage("Error: " + err.message, "error");
         } finally {
+          streamingBubble = null;
+          streamingMessageId = null;
+          streamedContent = "";
           isLoading = false;
           sendBtn.disabled = false;
           sendBtn.textContent = "Send";
@@ -1938,10 +2137,7 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
             <div class="settings-row">
               <label>Model</label>
               <select id="settingsModel">
-                <option value="gpt-5-mini">gpt-5-mini</option>
-                <option value="gpt-5">gpt-5</option>
-                <option value="claude-3.5-sonnet">claude-3.5-sonnet</option>
-                <option value="claude-4-opus">claude-4-opus</option>
+                <option value="">Loading models...</option>
               </select>
             </div>
             <div class="settings-row">
@@ -1974,8 +2170,32 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         const saveBtn = overlay.querySelector("#settingsSave");
         const themeOptions = overlay.querySelectorAll(".theme-option");
 
+        // Populate model dropdown dynamically from SDK
+        (async () => {
+          try {
+            const resp = await ipcRenderer.invoke("list-models");
+            if (resp.success && resp.models.length > 0) {
+              modelSelect.innerHTML = "";
+              for (const m of resp.models) {
+                const opt = document.createElement("option");
+                opt.value = m.id;
+                const state = m.policy?.state;
+                const suffix = state === "disabled" ? " (disabled)" : state === "unconfigured" ? " (unconfigured)" : "";
+                opt.textContent = (m.name || m.id) + suffix;
+                if (state === "disabled") opt.disabled = true;
+                modelSelect.appendChild(opt);
+              }
+            } else {
+              // Fallback: keep current model as only option
+              modelSelect.innerHTML = `<option value="${currentConfig.model || "gpt-5-mini"}">${currentConfig.model || "gpt-5-mini"}</option>`;
+            }
+          } catch {
+            modelSelect.innerHTML = `<option value="${currentConfig.model || "gpt-5-mini"}">${currentConfig.model || "gpt-5-mini"}</option>`;
+          }
+          modelSelect.value = currentConfig.model || "gpt-5-mini";
+        })();
+
         // Set current values
-        modelSelect.value = currentConfig.model || "gpt-5-mini";
         let newShortcut = currentConfig.shortcut;
         let newTheme = currentConfig.theme || "dark";
 
@@ -2028,7 +2248,10 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
           if (newModel !== currentConfig.model) {
             await ipcRenderer.invoke("set-config", "model", newModel);
             currentConfig.model = newModel;
+            configuredModel = newModel;
             modelBadge.textContent = newModel;
+            modelBadge.className = "pill";
+            modelBadge.title = newModel;
           }
           if (newShortcut && newShortcut !== currentConfig.shortcut) {
             await ipcRenderer.invoke("set-config", "shortcut", newShortcut);
@@ -2072,20 +2295,24 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
           emptyState.remove();
         }
 
-        addMessage("Capturing screenshot...", "assistant");
+        const tempMsg = addMessage("Capturing screenshot...", "assistant", false);
 
         try {
           const result = await ipcRenderer.invoke("capture-screenshot");
+          // Remove the temporary "Capturing..." message
+          if (tempMsg && tempMsg.parentNode) tempMsg.remove();
+
           if (result.success) {
-            if (result.url) {
-              addMessage(`Screenshot captured and uploaded!\n\n${result.url}`, "assistant");
-            } else {
-              addMessage(`Screenshot saved and copied to clipboard!\n\nSaved to: ${result.path}`, "assistant");
-            }
+            const imageRef = result.url || result.path;
+            const label = result.url
+              ? "Screenshot captured and uploaded!"
+              : "Screenshot saved and copied to clipboard!";
+            addMessage(`[screenshot:${imageRef}]${label}`, "assistant");
           } else {
             addMessage(`Screenshot failed: ${result.error}`, "error");
           }
         } catch (err) {
+          if (tempMsg && tempMsg.parentNode) tempMsg.remove();
           addMessage(`Screenshot error: ${err.message || "Unknown error"}`, "error");
         }
       });
@@ -2107,6 +2334,31 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
 
         chatContainer.appendChild(toolEl);
         chatContainer.scrollTop = chatContainer.scrollHeight;
+      });
+
+      // Listen for AI-triggered screenshot captures
+      ipcRenderer.on("screenshot-captured", (_event, data) => {
+        const imageRef = data.url || data.path;
+        if (imageRef) {
+          addMessage(`[screenshot:${imageRef}]Screenshot captured`, "assistant");
+        }
+      });
+
+      // Listen for actual model usage from SDK — verify badge matches configured model
+      let configuredModel = "";
+      ipcRenderer.invoke("get-config").then((cfg) => { configuredModel = cfg.model || ""; });
+
+      ipcRenderer.on("model-usage", (_event, data) => {
+        if (!data.model) return;
+        const actual = data.model;
+        modelBadge.textContent = actual;
+        modelBadge.title = `Actual: ${actual}` + (configuredModel && actual !== configuredModel ? ` (configured: ${configuredModel})` : "");
+
+        if (configuredModel && actual !== configuredModel) {
+          modelBadge.className = "pill mismatch";
+        } else {
+          modelBadge.className = "pill verified";
+        }
       });
 
       // ============ WIDGET SYSTEM ============

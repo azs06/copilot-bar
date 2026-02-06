@@ -2,6 +2,7 @@ import initSqlJs, { Database as SqlJsDatabase } from "sql.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 
 const CONFIG_DIR = join(homedir(), ".copilot-bar");
 const DB_PATH = join(CONFIG_DIR, "copilot-bar.db");
@@ -57,8 +58,9 @@ function ensureDefaultChatSession(database: SqlJsDatabase): number {
   if (existing) return existing;
 
   database.run("INSERT INTO chat_sessions (title) VALUES (?)", [formatSessionTitleFromTimestamp()]);
-  saveDb();
-  return getSingleNumber(database, "SELECT last_insert_rowid()") || 1;
+  const id = getSingleNumber(database, "SELECT last_insert_rowid()") || 1;
+  markDirty();
+  return id;
 }
 
 function getActiveSessionId(database: SqlJsDatabase): number {
@@ -147,17 +149,50 @@ async function initDb(): Promise<SqlJsDatabase> {
   // Index for session-scoped history queries
   db.run("CREATE INDEX IF NOT EXISTS idx_chat_history_session_id ON chat_history(session_id, id)");
 
-  saveDb();
+  saveDbSync();
   return db;
 }
 
-// Save database to file
-function saveDb(): void {
-  if (db) {
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    writeFileSync(DB_PATH, buffer);
+// ── Persistence ──────────────────────────────────────────────────────
+// Queries run in-memory (fast). Persistence = serialize entire DB + write to disk.
+// We debounce writes so bursts of mutations collapse into a single async flush.
+
+const SAVE_DEBOUNCE_MS = 500;
+let dirty = false;
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Mark the in-memory DB as needing a flush. The actual write happens
+// after SAVE_DEBOUNCE_MS of inactivity, off the main-thread event loop.
+function markDirty(): void {
+  dirty = true;
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    persistDb();
+  }, SAVE_DEBOUNCE_MS);
+}
+
+// Async persist — called by the debounce timer.
+async function persistDb(): Promise<void> {
+  if (!db || !dirty) return;
+  dirty = false;
+  const data = db.export();
+  const buffer = Buffer.from(data);
+  await writeFile(DB_PATH, buffer);
+}
+
+// Synchronous persist — only for init (must complete before app proceeds)
+// and shutdown (must complete before process exits).
+function saveDbSync(): void {
+  if (!db) return;
+  dirty = false;
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
   }
+  const data = db.export();
+  const buffer = Buffer.from(data);
+  writeFileSync(DB_PATH, buffer);
 }
 
 // Synchronous database getter (assumes initDb was called)
@@ -184,7 +219,7 @@ export function setConfig(key: string, value: string): void {
     "INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
     [key, value, value]
   );
-  saveDb();
+  markDirty();
 }
 
 export function getAllConfig(): Record<string, string> {
@@ -232,13 +267,13 @@ export function addChatMessage(role: string, content: string, sessionId?: number
     "INSERT INTO chat_history (role, content, session_id) VALUES (?, ?, ?)",
     [role, content, sid]
   );
+  const msgId = getSingleNumber(database, "SELECT last_insert_rowid()") || 0;
   database.run(
     "UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP, last_message_at = CURRENT_TIMESTAMP WHERE id = ?",
     [sid]
   );
-  saveDb();
-  const result = database.exec("SELECT last_insert_rowid()");
-  return result[0]?.values[0]?.[0] as number || 0;
+  markDirty();
+  return msgId;
 }
 
 export function getChatHistory(sessionId?: number, limit: number = 100): ChatMessage[] {
@@ -263,7 +298,7 @@ export function clearChatHistory(sessionId?: number): void {
   const sid = sessionId ?? getActiveSessionId(database);
   database.run("DELETE FROM chat_history WHERE session_id = ?", [sid]);
   database.run("UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", [sid]);
-  saveDb();
+  markDirty();
 }
 
 // Chat session functions
@@ -290,8 +325,8 @@ export function createChatSession(title?: string): number {
   const database = getDb();
   const finalTitle = (title && title.trim()) ? title.trim() : formatSessionTitleFromTimestamp();
   database.run("INSERT INTO chat_sessions (title) VALUES (?)", [finalTitle]);
-  saveDb();
   const id = getSingleNumber(database, "SELECT last_insert_rowid()") || 0;
+  markDirty();
   if (id > 0) {
     setConfig("active_session_id", String(id));
   }
@@ -303,7 +338,7 @@ export function renameChatSession(id: number, title: string): void {
   const finalTitle = title.trim();
   if (!finalTitle) return;
   database.run("UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [finalTitle, id]);
-  saveDb();
+  markDirty();
 }
 
 export function deleteChatSession(id: number): { activeSessionId: number } {
@@ -321,7 +356,7 @@ export function deleteChatSession(id: number): { activeSessionId: number } {
     setConfig("active_session_id", String(fallback));
   }
 
-  saveDb();
+  markDirty();
   return { activeSessionId: getActiveSessionId(database) };
 }
 
@@ -343,10 +378,174 @@ export function getActiveChatSession(): { id: number; title: string } {
   return { id: sid, title };
 }
 
-// Close database
+// Note functions
+export interface Note {
+  id: number;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function createNote(content: string): number {
+  const database = getDb();
+  database.run(
+    "INSERT INTO notes (content) VALUES (?)",
+    [content]
+  );
+  const id = getSingleNumber(database, "SELECT last_insert_rowid()");
+  markDirty();
+  if (!id || id <= 0) throw new Error("Failed to create note");
+  return id;
+}
+
+export function updateNote(id: number, content: string): boolean {
+  const database = getDb();
+  database.run(
+    "UPDATE notes SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    [content, id]
+  );
+  markDirty();
+  return true;
+}
+
+export function getNote(id: number): Note | null {
+  const database = getDb();
+  const result = database.exec(
+    "SELECT id, content, created_at, updated_at FROM notes WHERE id = ?",
+    [id]
+  );
+  if (result.length === 0 || result[0].values.length === 0) return null;
+  const row = result[0].values[0];
+  return {
+    id: row[0] as number,
+    content: row[1] as string,
+    created_at: row[2] as string,
+    updated_at: row[3] as string,
+  };
+}
+
+export function listNotes(limit: number = 50): Note[] {
+  const database = getDb();
+  const result = database.exec(
+    `SELECT id, content, created_at, updated_at FROM notes ORDER BY updated_at DESC LIMIT ?`,
+    [limit]
+  );
+  if (result.length === 0) return [];
+  return result[0].values.map((row) => ({
+    id: row[0] as number,
+    content: row[1] as string,
+    created_at: row[2] as string,
+    updated_at: row[3] as string,
+  }));
+}
+
+export function searchNotes(query: string, limit: number = 20): Note[] {
+  const database = getDb();
+  // Escape LIKE wildcards (% and _) in the user query
+  const escaped = query.replace(/%/g, "\\%").replace(/_/g, "\\_");
+  const searchPattern = `%${escaped}%`;
+  const result = database.exec(
+    `SELECT id, content, created_at, updated_at FROM notes WHERE content LIKE ? ESCAPE '\\' ORDER BY updated_at DESC LIMIT ?`,
+    [searchPattern, limit]
+  );
+  if (result.length === 0) return [];
+  return result[0].values.map((row) => ({
+    id: row[0] as number,
+    content: row[1] as string,
+    created_at: row[2] as string,
+    updated_at: row[3] as string,
+  }));
+}
+
+export function deleteNote(id: number): boolean {
+  const database = getDb();
+  database.run("DELETE FROM notes WHERE id = ?", [id]);
+  markDirty();
+  return true;
+}
+
+export function countNotes(): number {
+  const database = getDb();
+  return getSingleNumber(database, "SELECT COUNT(*) FROM notes") || 0;
+}
+
+export function deleteAllNotes(): void {
+  const database = getDb();
+  database.run("DELETE FROM notes");
+  markDirty();
+}
+
+// Todo functions
+export interface TodoItem {
+  id: number;
+  content: string;
+  completed: boolean;
+  created_at: string;
+}
+
+export function createTodo(content: string): number {
+  const database = getDb();
+  database.run("INSERT INTO todos (content) VALUES (?)", [content]);
+  const id = getSingleNumber(database, "SELECT last_insert_rowid()");
+  markDirty();
+  if (!id || id <= 0) throw new Error("Failed to create todo");
+  return id;
+}
+
+export function listTodos(filter: "all" | "active" | "completed" = "all", limit: number = 100): TodoItem[] {
+  const database = getDb();
+  let sql = "SELECT id, content, completed, created_at FROM todos";
+  const params: any[] = [];
+  if (filter === "active") {
+    sql += " WHERE completed = 0";
+  } else if (filter === "completed") {
+    sql += " WHERE completed = 1";
+  }
+  sql += " ORDER BY created_at DESC LIMIT ?";
+  params.push(limit);
+  const result = database.exec(sql, params);
+  if (result.length === 0) return [];
+  return result[0].values.map((row) => ({
+    id: row[0] as number,
+    content: row[1] as string,
+    completed: (row[2] as number) === 1,
+    created_at: row[3] as string,
+  }));
+}
+
+export function getTodo(id: number): TodoItem | null {
+  const database = getDb();
+  const result = database.exec(
+    "SELECT id, content, completed, created_at FROM todos WHERE id = ?",
+    [id]
+  );
+  if (result.length === 0 || result[0].values.length === 0) return null;
+  const row = result[0].values[0];
+  return {
+    id: row[0] as number,
+    content: row[1] as string,
+    completed: (row[2] as number) === 1,
+    created_at: row[3] as string,
+  };
+}
+
+export function completeTodo(id: number): boolean {
+  const database = getDb();
+  database.run("UPDATE todos SET completed = 1 WHERE id = ?", [id]);
+  markDirty();
+  return getTodo(id)?.completed === true;
+}
+
+export function deleteTodo(id: number): void {
+  const database = getDb();
+  database.run("DELETE FROM todos WHERE id = ?", [id]);
+  markDirty();
+}
+
+// Close database — flush synchronously since the process is exiting
 export function closeDb(): void {
   if (db) {
-    saveDb();
+    saveDbSync();
     db.close();
     db = null;
   }

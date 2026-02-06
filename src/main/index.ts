@@ -23,6 +23,8 @@ import {
   setActiveChatSession,
 } from "./database.js";
 import { captureAndUpload } from "./screenshot-service.js";
+import { getNativeApis } from "./tools/native-apis.js";
+import { preWarmOSD } from "./osd-window.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -93,6 +95,10 @@ app.whenReady().then(async () => {
   console.log("Initializing Copilot service...");
   await copilotService.initialize();
   console.log("Copilot service initialized");
+
+  // Pre-warm native APIs and OSD window to eliminate first-call latency
+  try { getNativeApis(); } catch (e) { console.warn("Native API pre-warm failed:", e); }
+  preWarmOSD();
 
   // Register IPC handlers BEFORE creating menubar (which preloads window)
   ipcMain.handle("chat", async (_event, prompt: string, sessionId?: number) => {
@@ -175,6 +181,33 @@ app.whenReady().then(async () => {
     return deleteChatSession(id);
   });
 
+  ipcMain.handle("compact-session", async (_event, sessionId?: number) => {
+    try {
+      const sid = typeof sessionId === "number" && sessionId > 0 ? sessionId : getActiveChatSession().id;
+      const history = getChatHistory(sid);
+      const messagesBefore = history.length;
+
+      const result = await copilotService.compactSession(sid);
+
+      if (result.success && result.summary) {
+        clearChatHistory(sid);
+        addChatMessage("assistant", `**Conversation compacted** (${messagesBefore} messages → summary)\n\n${result.summary}`, sid);
+      }
+
+      return { success: true, messagesBefore, summary: result.summary };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Compaction failed" };
+    }
+  });
+
+  ipcMain.handle("list-models", async () => {
+    try {
+      return { success: true, models: await copilotService.listModels() };
+    } catch (error) {
+      return { success: false, models: [], error: error instanceof Error ? error.message : "Failed to list models" };
+    }
+  });
+
   ipcMain.handle("quit-app", () => {
     app.quit();
   });
@@ -232,6 +265,27 @@ app.whenReady().then(async () => {
     copilotService.setWidgetEventHandler((event) => {
       if (mb.window) {
         mb.window.webContents.send("render-widget", event);
+      }
+    });
+
+    // Set up streaming delta handler for progressive response rendering
+    copilotService.setStreamHandler((delta) => {
+      if (mb.window) {
+        mb.window.webContents.send("chat-delta", delta);
+      }
+    });
+
+    // Set up screenshot event handler to render screenshots inline in chat
+    copilotService.setScreenshotEventHandler((event) => {
+      if (mb.window) {
+        mb.window.webContents.send("screenshot-captured", event);
+      }
+    });
+
+    // Forward actual model usage info to renderer for badge verification
+    copilotService.setModelUsageHandler((event) => {
+      if (mb.window) {
+        mb.window.webContents.send("model-usage", event);
       }
     });
   });
