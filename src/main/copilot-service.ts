@@ -1,11 +1,31 @@
 import { CopilotClient, type CopilotSession, defineTool } from "@github/copilot-sdk";
 import { Notification } from "electron";
-import { loadConfig } from "./database.js";
+import { loadConfig, createNote, updateNote, getNote, listNotes, searchNotes, deleteNote, deleteAllNotes, countNotes, createTodo, listTodos, getTodo, completeTodo, deleteTodo, type TodoItem } from "./database.js";
 import { captureAndUpload, isS3Configured } from "./screenshot-service.js";
-import { exec } from "node:child_process";
+import { exec, execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
+import { writeFile, unlink } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const writeFileAsync = promisify(writeFile);
+const unlinkAsync = promisify(unlink);
+import { createRequire } from "node:module";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFileCb);
+
+// Run AppleScript via -e flags (no temp files, no sync I/O on main thread)
+async function runAppleScript(script: string, timeout = 10000): Promise<string> {
+  const args = script.split("\n").map(l => l.trim()).filter(Boolean).flatMap(line => ["-e", line]);
+  const { stdout } = await execFileAsync("osascript", args, { timeout });
+  return stdout.trim();
+}
+
+// Helper to safely escape a string for embedding in AppleScript double-quoted strings
+function escapeAppleScriptString(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
 
 // Reminder storage (in-memory for current session)
 interface Reminder {
@@ -85,6 +105,115 @@ function listReminders(): Array<{ id: string; message: string; triggerAt: string
   }));
 }
 
+// Native macOS APIs via koffi (FFI) — lazy-loaded on first use
+// Replaces osascript/blueutil with direct framework calls for speed and zero dependencies
+interface NativeMacApis {
+  brightness: { get: () => number; set: (level: number) => void };
+  volume: { get: () => number; set: (level: number) => void; getMute: () => boolean; setMute: (mute: boolean) => void };
+  bluetooth: { isEnabled: () => boolean; setEnabled: (enabled: boolean) => void };
+  screen: { getWidth: () => number; getHeight: () => number };
+}
+
+let _nativeApis: NativeMacApis | null = null;
+
+function getNativeApis(): NativeMacApis {
+  if (!_nativeApis) {
+    const _require = createRequire(import.meta.url);
+    const koffi = _require("koffi");
+
+    // --- CoreGraphics + DisplayServices (brightness & screen) ---
+    const CG = koffi.load("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics");
+    const DS = koffi.load("/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices");
+    const CGMainDisplayID = CG.func("uint32_t CGMainDisplayID()");
+    const CGDisplayPixelsWide = CG.func("size_t CGDisplayPixelsWide(uint32_t)");
+    const CGDisplayPixelsHigh = CG.func("size_t CGDisplayPixelsHigh(uint32_t)");
+    const DSGetBrightness = DS.func("int DisplayServicesGetBrightness(uint32_t, _Out_ float*)");
+    const DSSetBrightness = DS.func("int DisplayServicesSetBrightness(uint32_t, float)");
+    const displayID = CGMainDisplayID();
+
+    // --- CoreAudio (volume & mute) ---
+    const CA = koffi.load("/System/Library/Frameworks/CoreAudio.framework/CoreAudio");
+    koffi.struct("AudioObjectPropertyAddress", {
+      mSelector: "uint32",
+      mScope: "uint32",
+      mElement: "uint32",
+    });
+    const AOGetU32 = CA.func("int AudioObjectGetPropertyData(uint32, AudioObjectPropertyAddress*, uint32, void*, _Inout_ uint32*, _Out_ uint32*)");
+    const AOGetF32 = CA.func("int AudioObjectGetPropertyData(uint32, AudioObjectPropertyAddress*, uint32, void*, _Inout_ uint32*, _Out_ float*)");
+    const AOSetF32 = CA.func("int AudioObjectSetPropertyData(uint32, AudioObjectPropertyAddress*, uint32, void*, uint32, float*)");
+    const AOSetU32 = CA.func("int AudioObjectSetPropertyData(uint32, AudioObjectPropertyAddress*, uint32, void*, uint32, uint32*)");
+    // FourCC constants
+    const SYS = 1; // kAudioObjectSystemObject
+    const SCOPE_GLOBAL = 0x676C6F62; // 'glob'
+    const SCOPE_OUTPUT = 0x6F757470; // 'outp'
+    const SEL_DEFAULT_OUT = 0x644F7574; // 'dOut' — kAudioHardwarePropertyDefaultOutputDevice
+    const SEL_VOLUME = 0x766F6C6D; // 'volm' — kAudioDevicePropertyVolumeScalar
+    const SEL_MUTE = 0x6D757465; // 'mute' — kAudioDevicePropertyMute
+
+    function getOutputDevice(): number {
+      const size = [4], id = [0];
+      const r = AOGetU32(SYS, { mSelector: SEL_DEFAULT_OUT, mScope: SCOPE_GLOBAL, mElement: 0 }, 0, null, size, id);
+      if (r !== 0) throw new Error(`Failed to get default output device (${r})`);
+      return id[0];
+    }
+
+    // --- IOBluetooth (power on/off) ---
+    const BT = koffi.load("/System/Library/Frameworks/IOBluetooth.framework/IOBluetooth");
+    const BTGetPower = BT.func("int IOBluetoothPreferenceGetControllerPowerState()");
+    const BTSetPower = BT.func("void IOBluetoothPreferenceSetControllerPowerState(int)");
+
+    _nativeApis = {
+      brightness: {
+        get: () => {
+          const out = [0];
+          const r = DSGetBrightness(displayID, out);
+          if (r !== 0) throw new Error(`DisplayServicesGetBrightness failed (${r})`);
+          return out[0];
+        },
+        set: (level: number) => {
+          const r = DSSetBrightness(displayID, Math.max(0, Math.min(1, level)));
+          if (r !== 0) throw new Error(`DisplayServicesSetBrightness failed (${r})`);
+        },
+      },
+      volume: {
+        get: () => {
+          const dev = getOutputDevice();
+          const size = [4], vol = [0.0];
+          const r = AOGetF32(dev, { mSelector: SEL_VOLUME, mScope: SCOPE_OUTPUT, mElement: 0 }, 0, null, size, vol);
+          if (r !== 0) throw new Error(`CoreAudio get volume failed (${r})`);
+          return vol[0];
+        },
+        set: (level: number) => {
+          const dev = getOutputDevice();
+          const r = AOSetF32(dev, { mSelector: SEL_VOLUME, mScope: SCOPE_OUTPUT, mElement: 0 }, 0, null, 4, [Math.max(0, Math.min(1, level))]);
+          if (r !== 0) throw new Error(`CoreAudio set volume failed (${r})`);
+        },
+        getMute: () => {
+          const dev = getOutputDevice();
+          const size = [4], m = [0];
+          const r = AOGetU32(dev, { mSelector: SEL_MUTE, mScope: SCOPE_OUTPUT, mElement: 0 }, 0, null, size, m);
+          if (r !== 0) throw new Error(`CoreAudio get mute failed (${r})`);
+          return m[0] === 1;
+        },
+        setMute: (mute: boolean) => {
+          const dev = getOutputDevice();
+          const r = AOSetU32(dev, { mSelector: SEL_MUTE, mScope: SCOPE_OUTPUT, mElement: 0 }, 0, null, 4, [mute ? 1 : 0]);
+          if (r !== 0) throw new Error(`CoreAudio set mute failed (${r})`);
+        },
+      },
+      bluetooth: {
+        isEnabled: () => BTGetPower() === 1,
+        setEnabled: (enabled: boolean) => BTSetPower(enabled ? 1 : 0),
+      },
+      screen: {
+        getWidth: () => Number(CGDisplayPixelsWide(displayID)),
+        getHeight: () => Number(CGDisplayPixelsHigh(displayID)),
+      },
+    };
+  }
+  return _nativeApis;
+}
+
 // Custom tools for system control
 const setVolumeTool = defineTool("set_volume", {
   description: "Set the system volume level on macOS. Volume should be between 0 (mute) and 100 (max).",
@@ -99,9 +228,13 @@ const setVolumeTool = defineTool("set_volume", {
     required: ["volume"],
   },
   handler: async ({ volume }: { volume: number }) => {
-    const level = Math.max(0, Math.min(100, volume));
-    await execAsync(`osascript -e "set volume output volume ${level}"`, { timeout: 5000 });
-    return { success: true, message: `Volume set to ${level}%` };
+    try {
+      const level = Math.max(0, Math.min(100, volume));
+      getNativeApis().volume.set(level / 100);
+      return { success: true, message: `Volume set to ${level}%` };
+    } catch (error: any) {
+      return { success: false, error: `Volume error: ${error.message}` };
+    }
   },
 });
 
@@ -112,8 +245,12 @@ const getVolumeTool = defineTool("get_volume", {
     properties: {},
   },
   handler: async () => {
-    const { stdout } = await execAsync(`osascript -e "output volume of (get volume settings)"`, { timeout: 5000 });
-    return { volume: parseInt(stdout.trim(), 10) };
+    try {
+      const raw = getNativeApis().volume.get();
+      return { success: true, volume: Math.round(raw * 100), message: `Current volume: ${Math.round(raw * 100)}%` };
+    } catch (error: any) {
+      return { success: false, error: `Volume error: ${error.message}` };
+    }
   },
 });
 
@@ -130,30 +267,70 @@ const muteTool = defineTool("toggle_mute", {
     required: ["mute"],
   },
   handler: async ({ mute }: { mute: boolean }) => {
-    await execAsync(`osascript -e "set volume output muted ${mute}"`, { timeout: 5000 });
-    return { success: true, message: mute ? "Muted" : "Unmuted" };
+    try {
+      getNativeApis().volume.setMute(mute);
+      return { success: true, message: mute ? "Muted" : "Unmuted" };
+    } catch (error: any) {
+      return { success: false, error: `Mute error: ${error.message}` };
+    }
+  },
+});
+
+const getBrightnessTool = defineTool("get_brightness", {
+  description: "Get the current screen brightness level on macOS. Returns a percentage (0-100).",
+  parameters: {
+    type: "object",
+    properties: {},
+  },
+  handler: async () => {
+    try {
+      const api = getNativeApis().brightness;
+      const raw = api.get();
+      return { success: true, brightness: Math.round(raw * 100), message: `Current brightness: ${Math.round(raw * 100)}%` };
+    } catch (error: any) {
+      return { success: false, error: `Brightness error: ${error.message}` };
+    }
   },
 });
 
 const setBrightnessTool = defineTool("set_brightness", {
-  description: "Set the screen brightness on macOS. Brightness should be between 0 (dark) and 1 (bright). Note: This requires 'brightness' CLI tool installed via: brew install brightness",
+  description: "Adjust the screen brightness on macOS. Use 'set' with a level (0-100) for precise control, or 'up'/'down' to step by a percentage.",
   parameters: {
     type: "object",
     properties: {
-      brightness: {
+      action: {
+        type: "string",
+        enum: ["up", "down", "set"],
+        description: "'up' to increase, 'down' to decrease, 'set' to target a specific level",
+      },
+      level: {
         type: "number",
-        description: "Brightness level from 0.0 to 1.0",
+        description: "Target brightness percentage (0-100). Used when action is 'set'.",
+      },
+      step: {
+        type: "number",
+        description: "Step size as percentage (default: 10). Used when action is 'up' or 'down'.",
       },
     },
-    required: ["brightness"],
+    required: ["action"],
   },
-  handler: async ({ brightness }: { brightness: number }) => {
-    const level = Math.max(0, Math.min(1, brightness));
+  handler: async ({ action, level, step = 10 }: { action: "up" | "down" | "set"; level?: number; step?: number }) => {
     try {
-      await execAsync(`/opt/homebrew/bin/brightness ${level}`, { timeout: 5000 });
-      return { success: true, message: `Brightness set to ${Math.round(level * 100)}%` };
+      const api = getNativeApis().brightness;
+      if (action === "set" && level !== undefined) {
+        const normalized = Math.max(0, Math.min(100, level)) / 100;
+        api.set(normalized);
+        return { success: true, brightness: Math.round(normalized * 100), message: `Brightness set to ${Math.round(normalized * 100)}%` };
+      } else {
+        const current = api.get();
+        const delta = (step / 100) * (action === "up" ? 1 : -1);
+        const next = Math.max(0, Math.min(1, current + delta));
+        api.set(next);
+        const pct = Math.round(next * 100);
+        return { success: true, brightness: pct, message: `Brightness ${action === "up" ? "increased" : "decreased"} to ${pct}%` };
+      }
     } catch (error: any) {
-      return { success: false, message: `Brightness error: ${error.message}` };
+      return { success: false, error: `Brightness error: ${error.message}` };
     }
   },
 });
@@ -213,71 +390,19 @@ const setDoNotDisturbTool = defineTool("set_do_not_disturb", {
   },
   handler: async ({ enabled }: { enabled: boolean }) => {
     try {
-      // Use shortcuts command to toggle Focus mode
-      // First, try using the Focus mode shortcuts (macOS 12+)
-      const script = enabled
-        ? `
-          tell application "System Events"
-            tell process "ControlCenter"
-              -- Click the Control Center menu bar item
-              click menu bar item "Control Center" of menu bar 1
-              delay 0.5
-              -- Click Focus
-              click button "Focus" of window "Control Center"
-              delay 0.3
-              -- Click Do Not Disturb to enable
-              click checkbox "Do Not Disturb" of group 1 of window "Control Center"
-              delay 0.2
-              -- Click away to close
-              key code 53
-            end tell
-          end tell
-        `
-        : `
-          tell application "System Events"
-            tell process "ControlCenter"
-              click menu bar item "Control Center" of menu bar 1
-              delay 0.5
-              click button "Focus" of window "Control Center"
-              delay 0.3
-              -- Check if DND is on, if so click to disable
-              set focusButton to checkbox "Do Not Disturb" of group 1 of window "Control Center"
-              if value of focusButton is 1 then
-                click focusButton
-              end if
-              delay 0.2
-              key code 53
-            end tell
-          end tell
-        `;
-
-      // Alternative simpler approach using shortcuts if available
-      // First try the simple Focus toggle approach
-      try {
-        if (enabled) {
-          // Enable DND using defaults and killall
-          await execAsync(`defaults -currentHost write com.apple.notificationcenterui doNotDisturb -boolean true && killall NotificationCenter 2>/dev/null || true`, { timeout: 5000 });
-        } else {
-          await execAsync(`defaults -currentHost write com.apple.notificationcenterui doNotDisturb -boolean false && killall NotificationCenter 2>/dev/null || true`, { timeout: 5000 });
-        }
-        return { 
-          success: true, 
-          enabled,
-          message: enabled ? "Do Not Disturb enabled" : "Do Not Disturb disabled" 
-        };
-      } catch {
-        // Fallback to AppleScript approach
-        await execAsync(`osascript -e '${script.replace(/'/g, "'\"'\"'")}'`, { timeout: 15000 });
-        return { 
-          success: true, 
-          enabled,
-          message: enabled ? "Do Not Disturb enabled" : "Do Not Disturb disabled" 
-        };
-      }
+      await execAsync(
+        `defaults -currentHost write com.apple.notificationcenterui doNotDisturb -boolean ${enabled} && killall NotificationCenter 2>/dev/null || true`,
+        { timeout: 5000 }
+      );
+      return {
+        success: true,
+        enabled,
+        message: enabled ? "Do Not Disturb enabled" : "Do Not Disturb disabled"
+      };
     } catch (error: any) {
-      return { 
-        success: false, 
-        error: `Failed to toggle Do Not Disturb: ${error.message}. You may need to grant Accessibility permissions to the app.` 
+      return {
+        success: false,
+        error: `Failed to toggle Do Not Disturb: ${error.message}`
       };
     }
   },
@@ -349,63 +474,29 @@ const toggleDoNotDisturbTool = defineTool("toggle_do_not_disturb", {
   },
 });
 
-// Helper function to get WiFi interface name (usually en0, but can vary)
+// Cached WiFi interface name — detected once, reused for the session
+let _wifiInterface: string | null = null;
+
 async function getWifiInterface(): Promise<string> {
-  try {
-    const { stdout } = await execAsync(
-      `networksetup -listallhardwareports | awk '/Wi-Fi|AirPort/{getline; print $2}'`,
-      { timeout: 5000 }
-    );
-    const iface = stdout.trim();
-    return iface || "en0"; // Default to en0 if not found
-  } catch {
-    return "en0";
+  if (!_wifiInterface) {
+    try {
+      const { stdout } = await execFileAsync(
+        "networksetup", ["-listallhardwareports"],
+        { timeout: 5000 }
+      );
+      const match = stdout.match(/Wi-Fi|AirPort/);
+      if (match) {
+        // The device line follows the hardware port line
+        const lines = stdout.split("\n");
+        const idx = lines.findIndex(l => /Wi-Fi|AirPort/.test(l));
+        const deviceLine = lines[idx + 1];
+        const deviceMatch = deviceLine?.match(/Device:\s*(\S+)/);
+        if (deviceMatch) _wifiInterface = deviceMatch[1];
+      }
+    } catch { /* fall through to default */ }
+    _wifiInterface ??= "en0";
   }
-}
-
-// Helper: get SSID for a specific interface using ipconfig
-async function getSsidForInterface(iface: string): Promise<string | null> {
-  try {
-    const { stdout } = await execAsync(
-      `ipconfig getsummary ${iface} | awk -F': ' '/ SSID/ {print $2}'`,
-      { timeout: 5000 }
-    );
-    const ssid = stdout.trim();
-    return ssid ? ssid : null;
-  } catch {
-    return null;
-  }
-}
-
-// Helper: get current SSID using multiple fallbacks
-async function getCurrentWifiSsid(): Promise<string | null> {
-  const iface = await getWifiInterface();
-  let ssid = await getSsidForInterface(iface);
-  if (ssid) return ssid;
-
-  // Fallback: check all en* interfaces
-  try {
-    const { stdout } = await execAsync(`ifconfig -lX "en[0-9]"`, { timeout: 5000 });
-    const interfaces = stdout.trim().split(/\s+/).filter(Boolean);
-    for (const candidate of interfaces) {
-      ssid = await getSsidForInterface(candidate);
-      if (ssid) return ssid;
-    }
-  } catch {
-    // ignore
-  }
-
-  return null;
-}
-
-// Helper function to check if blueutil is available
-async function checkBlueutil(): Promise<boolean> {
-  try {
-    await execAsync("which blueutil", { timeout: 2000 });
-    return true;
-  } catch {
-    return false;
-  }
+  return _wifiInterface;
 }
 
 // WiFi control tools
@@ -424,19 +515,10 @@ const setWifiTool = defineTool("set_wifi", {
   handler: async ({ enabled }: { enabled: boolean }) => {
     try {
       const iface = await getWifiInterface();
-      const state = enabled ? "on" : "off";
-      await execAsync(`networksetup -setairportpower ${iface} ${state}`, { timeout: 10000 });
-      return { 
-        success: true, 
-        enabled,
-        interface: iface,
-        message: enabled ? "WiFi turned on" : "WiFi turned off"
-      };
+      await execFileAsync("networksetup", ["-setairportpower", iface, enabled ? "on" : "off"], { timeout: 10000 });
+      return { success: true, enabled, message: enabled ? "WiFi turned on" : "WiFi turned off" };
     } catch (error: any) {
-      return { 
-        success: false, 
-        error: `Failed to set WiFi: ${error.message}` 
-      };
+      return { success: false, error: `Failed to set WiFi: ${error.message}` };
     }
   },
 });
@@ -450,53 +532,26 @@ const getWifiStatusTool = defineTool("get_wifi_status", {
   handler: async () => {
     try {
       const iface = await getWifiInterface();
-
-      // Check if WiFi is on
-      const { stdout: powerStatus } = await execAsync(
-        `networksetup -getairportpower ${iface}`,
-        { timeout: 5000 }
-      );
-      const isOn = powerStatus.toLowerCase().includes("on");
-
+      // Run power check and network name in parallel
+      const [powerResult, networkResult] = await Promise.all([
+        execFileAsync("networksetup", ["-getairportpower", iface], { timeout: 5000 }),
+        execFileAsync("networksetup", ["-getairportnetwork", iface], { timeout: 5000 }).catch(() => null),
+      ]);
+      const isOn = powerResult.stdout.toLowerCase().includes("on");
       if (!isOn) {
-        return {
-          success: true,
-          enabled: false,
-          connected: false,
-          message: "WiFi is OFF"
-        };
+        return { success: true, enabled: false, connected: false, message: "WiFi is OFF" };
       }
-
-      // Get current network name (with fallback)
-      let networkName: string | null = null;
-      try {
-        const { stdout: networkInfo } = await execAsync(
-          `networksetup -getairportnetwork ${iface}`,
-          { timeout: 5000 }
-        );
-        const match = networkInfo.match(/Current Wi-Fi Network: (.+)/);
-        networkName = match ? match[1].trim() : null;
-      } catch {
-        // ignore and use fallback
-      }
-
-      if (!networkName) {
-        networkName = await getCurrentWifiSsid();
-      }
-
+      const ssidMatch = networkResult?.stdout.match(/Current Wi-Fi Network: (.+)/);
+      const networkName = ssidMatch ? ssidMatch[1].trim() : null;
       return {
         success: true,
         enabled: true,
         connected: !!networkName,
-        networkName: networkName || null,
-        interface: iface,
+        networkName,
         message: networkName ? `WiFi is ON, connected to "${networkName}"` : "WiFi is ON but not connected"
       };
     } catch (error: any) {
-      return { 
-        success: false, 
-        error: `Failed to get WiFi status: ${error.message}` 
-      };
+      return { success: false, error: `Failed to get WiFi status: ${error.message}` };
     }
   },
 });
@@ -510,32 +565,12 @@ const toggleWifiTool = defineTool("toggle_wifi", {
   handler: async () => {
     try {
       const iface = await getWifiInterface();
-      
-      // Check current status
-      const { stdout: powerStatus } = await execAsync(
-        `networksetup -getairportpower ${iface}`,
-        { timeout: 5000 }
-      );
-      const isCurrentlyOn = powerStatus.toLowerCase().includes("on");
-      const newState = !isCurrentlyOn;
-      
-      // Toggle it
-      await execAsync(
-        `networksetup -setairportpower ${iface} ${newState ? "on" : "off"}`,
-        { timeout: 10000 }
-      );
-      
-      return { 
-        success: true, 
-        enabled: newState,
-        interface: iface,
-        message: newState ? "WiFi turned on" : "WiFi turned off"
-      };
+      const { stdout } = await execFileAsync("networksetup", ["-getairportpower", iface], { timeout: 5000 });
+      const newState = !stdout.toLowerCase().includes("on");
+      await execFileAsync("networksetup", ["-setairportpower", iface, newState ? "on" : "off"], { timeout: 10000 });
+      return { success: true, enabled: newState, message: newState ? "WiFi turned on" : "WiFi turned off" };
     } catch (error: any) {
-      return { 
-        success: false, 
-        error: `Failed to toggle WiFi: ${error.message}` 
-      };
+      return { success: false, error: `Failed to toggle WiFi: ${error.message}` };
     }
   },
 });
@@ -549,75 +584,30 @@ const listWifiNetworksTool = defineTool("list_wifi_networks", {
   handler: async () => {
     try {
       const iface = await getWifiInterface();
-      
-      // Check if WiFi is on
-      const { stdout: powerStatus } = await execAsync(
-        `networksetup -getairportpower ${iface}`,
-        { timeout: 5000 }
-      );
-      const isOn = powerStatus.toLowerCase().includes("on");
-      
+      // Run all three queries in parallel
+      const [powerResult, networkResult, preferredResult] = await Promise.all([
+        execFileAsync("networksetup", ["-getairportpower", iface], { timeout: 5000 }),
+        execFileAsync("networksetup", ["-getairportnetwork", iface], { timeout: 5000 }).catch(() => null),
+        execFileAsync("networksetup", ["-listpreferredwirelessnetworks", iface], { timeout: 5000 }).catch(() => null),
+      ]);
+      const isOn = powerResult.stdout.toLowerCase().includes("on");
       if (!isOn) {
-        return {
-          widget: "wifi",
-          enabled: false,
-          connected: false,
-          currentNetwork: null,
-          savedNetworks: [],
-          message: "WiFi is turned off"
-        };
+        return { widget: "wifi", enabled: false, connected: false, currentNetwork: null, savedNetworks: [], message: "WiFi is turned off" };
       }
-      
-      // Get current network
-      let currentNetwork: string | null = null;
-      try {
-        const { stdout: networkInfo } = await execAsync(
-          `networksetup -getairportnetwork ${iface}`,
-          { timeout: 5000 }
-        );
-        const match = networkInfo.match(/Current Wi-Fi Network: (.+)/);
-        currentNetwork = match ? match[1].trim() : null;
-      } catch {
-        // Not connected
-      }
-
-      if (!currentNetwork) {
-        currentNetwork = await getCurrentWifiSsid();
-      }
-      
-      // Get preferred/saved networks
-      const { stdout: preferredOutput } = await execAsync(
-        `networksetup -listpreferredwirelessnetworks ${iface}`,
-        { timeout: 5000 }
-      );
-      
-      const lines = preferredOutput.trim().split("\n");
-      const savedNetworks: string[] = [];
-      
-      // Skip the header line "Preferred networks on en0:"
-      for (let i = 1; i < lines.length; i++) {
-        const network = lines[i].trim();
-        if (network) {
-          savedNetworks.push(network);
-        }
-      }
-      
+      const ssidMatch = networkResult?.stdout.match(/Current Wi-Fi Network: (.+)/);
+      const currentNetwork = ssidMatch ? ssidMatch[1].trim() : null;
+      const savedNetworks = (preferredResult?.stdout.trim().split("\n").slice(1) ?? [])
+        .map(l => l.trim()).filter(Boolean);
       return {
         widget: "wifi",
         enabled: true,
         currentNetwork,
         connected: !!currentNetwork,
         savedNetworks,
-        message: currentNetwork 
-          ? `Connected to "${currentNetwork}"`
-          : `WiFi is on but not connected`
+        message: currentNetwork ? `Connected to "${currentNetwork}"` : "WiFi is on but not connected"
       };
     } catch (error: any) {
-      return { 
-        widget: "wifi",
-        enabled: false,
-        error: `Failed to list WiFi networks: ${error.message}` 
-      };
+      return { widget: "wifi", enabled: false, error: `Failed to list WiFi networks: ${error.message}` };
     }
   },
 });
@@ -636,27 +626,15 @@ const setBluetoothTool = defineTool("set_bluetooth", {
     required: ["enabled"],
   },
   handler: async ({ enabled }: { enabled: boolean }) => {
-    // Check if blueutil is available
-    if (!(await checkBlueutil())) {
-      return {
-        success: false,
-        error: "Bluetooth control requires 'blueutil' to be installed. Install it via: brew install blueutil"
-      };
-    }
-
     try {
-      const state = enabled ? "on" : "off";
-      await execAsync(`blueutil --power ${state}`, { timeout: 10000 });
+      getNativeApis().bluetooth.setEnabled(enabled);
       return {
         success: true,
         enabled,
         message: enabled ? "Bluetooth turned on" : "Bluetooth turned off"
       };
     } catch (error: any) {
-      return {
-        success: false,
-        error: `Failed to set Bluetooth: ${error.message}`
-      };
+      return { success: false, error: `Bluetooth error: ${error.message}` };
     }
   },
 });
@@ -668,27 +646,15 @@ const getBluetoothStatusTool = defineTool("get_bluetooth_status", {
     properties: {},
   },
   handler: async () => {
-    // Check if blueutil is available
-    if (!(await checkBlueutil())) {
-      return {
-        success: false,
-        error: "Bluetooth control requires 'blueutil' to be installed. Install it via: brew install blueutil"
-      };
-    }
-
     try {
-      const { stdout } = await execAsync("blueutil --power", { timeout: 5000 });
-      const enabled = stdout.trim() === "1";
+      const enabled = getNativeApis().bluetooth.isEnabled();
       return {
         success: true,
         enabled,
         message: enabled ? "Bluetooth is on" : "Bluetooth is off"
       };
     } catch (error: any) {
-      return {
-        success: false,
-        error: `Failed to get Bluetooth status: ${error.message}`
-      };
+      return { success: false, error: `Bluetooth error: ${error.message}` };
     }
   },
 });
@@ -700,33 +666,1246 @@ const toggleBluetoothTool = defineTool("toggle_bluetooth", {
     properties: {},
   },
   handler: async () => {
-    // Check if blueutil is available
-    if (!(await checkBlueutil())) {
-      return {
-        success: false,
-        error: "Bluetooth control requires 'blueutil' to be installed. Install it via: brew install blueutil"
-      };
-    }
-
     try {
-      // Get current state
-      const { stdout } = await execAsync("blueutil --power", { timeout: 5000 });
-      const currentState = stdout.trim() === "1";
-      const newState = !currentState;
-
-      // Toggle to new state
-      const state = newState ? "on" : "off";
-      await execAsync(`blueutil --power ${state}`, { timeout: 10000 });
-
+      const bt = getNativeApis().bluetooth;
+      const newState = !bt.isEnabled();
+      bt.setEnabled(newState);
       return {
         success: true,
         enabled: newState,
         message: newState ? "Bluetooth turned on" : "Bluetooth turned off"
       };
     } catch (error: any) {
+      return { success: false, error: `Bluetooth error: ${error.message}` };
+    }
+  },
+});
+
+const listBluetoothDevicesTool = defineTool("list_bluetooth_devices", {
+  description: "List paired and connected Bluetooth devices on macOS.",
+  parameters: {
+    type: "object",
+    properties: {
+      connected_only: {
+        type: "boolean",
+        description: "If true, only show currently connected devices",
+      },
+    },
+  },
+  handler: async ({ connected_only }: { connected_only?: boolean }) => {
+    try {
+      // Use system_profiler (built-in, no external dependencies)
+      const { stdout } = await execAsync("system_profiler SPBluetoothDataType -json", { timeout: 15000 });
+      const data = JSON.parse(stdout);
+      const btData = data?.SPBluetoothDataType?.[0] ?? {};
+
+      const devices: Array<{ name: string; address: string; connected: boolean }> = [];
+
+      // Parse connected devices
+      const connected = btData.device_connected ?? btData.devices_connected ?? [];
+      for (const entry of (Array.isArray(connected) ? connected : [])) {
+        for (const [name, info] of Object.entries(entry as Record<string, any>)) {
+          devices.push({
+            name,
+            address: (info as any).device_address ?? "unknown",
+            connected: true,
+          });
+        }
+      }
+
+      if (!connected_only) {
+        // Parse not-connected (paired) devices
+        const notConnected = btData.device_not_connected ?? btData.devices_not_connected ?? [];
+        for (const entry of (Array.isArray(notConnected) ? notConnected : [])) {
+          for (const [name, info] of Object.entries(entry as Record<string, any>)) {
+            devices.push({
+              name,
+              address: (info as any).device_address ?? "unknown",
+              connected: false,
+            });
+          }
+        }
+      }
+
+      const connectedCount = devices.filter(d => d.connected).length;
+      return {
+        success: true,
+        devices,
+        count: devices.length,
+        connected_count: connectedCount,
+        message: connected_only
+          ? `Found ${devices.length} connected Bluetooth device(s)`
+          : `Found ${devices.length} Bluetooth device(s) (${connectedCount} connected)`
+      };
+    } catch (error: any) {
+      return { success: false, error: `Failed to list Bluetooth devices: ${error.message}` };
+    }
+  },
+});
+
+// Window organizer tools
+const listWindowsTool = defineTool("list_windows", {
+  description: "List all visible/running applications and their windows on macOS.",
+  parameters: {
+    type: "object",
+    properties: {
+      include_hidden: {
+        type: "boolean",
+        description: "If true, include hidden/minimized applications",
+      },
+    },
+  },
+  handler: async ({ include_hidden }: { include_hidden?: boolean }) => {
+    try {
+      // Get list of running applications with visible windows
+      const includeHiddenAS = include_hidden ? "true" : "false";
+      const script = `
+        tell application "System Events"
+          set appList to {}
+          set includeHidden to ${includeHiddenAS}
+          set allApps to every application process whose background only is false
+          repeat with appProc in allApps
+            set appName to name of appProc
+            set winCount to count of windows of appProc
+            set isVisible to visible of appProc
+            set isFrontmost to frontmost of appProc
+            if winCount > 0 or includeHidden then
+              set end of appList to {appName, winCount, isVisible, isFrontmost}
+            end if
+          end repeat
+          return appList
+        end tell
+      `;
+
+      const stdout = await runAppleScript(script, 10000);
+      
+      // Parse AppleScript list format
+      const apps: Array<{ name: string; windows: number; visible: boolean; frontmost: boolean }> = [];
+      const lines = stdout.trim().split(", ");
+      
+      for (let i = 0; i < lines.length; i += 4) {
+        if (lines[i] && lines[i] !== "") {
+          apps.push({
+            name: lines[i].replace(/^\["?|"?\]$/g, ""),
+            windows: parseInt(lines[i + 1]) || 0,
+            visible: lines[i + 2] === "true",
+            frontmost: lines[i + 3] === "true"
+          });
+        }
+      }
+      
+      return {
+        success: true,
+        apps: apps.filter(a => a.name && a.name !== ""),
+        count: apps.length,
+        message: `Found ${apps.length} running application(s)`
+      };
+    } catch (error: any) {
       return {
         success: false,
-        error: `Failed to toggle Bluetooth: ${error.message}`
+        error: `Failed to list windows: ${error.message}`
+      };
+    }
+  },
+});
+
+const arrangeWindowsTool = defineTool("arrange_windows", {
+  description: "Arrange windows on macOS using different layouts: split screen (left/right), cascade, or maximize specific apps. Great for organizing your workspace.",
+  parameters: {
+    type: "object",
+    properties: {
+      layout: {
+        type: "string",
+        enum: ["split", "cascade", "maximize", "minimize_all", "restore_all"],
+        description: "Layout type: 'split' for left/right, 'cascade' for overlapping windows, 'maximize' to maximize an app, 'minimize_all' to minimize all, 'restore_all' to restore minimized windows",
+      },
+      app_name: {
+        type: "string",
+        description: "For maximize layout: the application name to maximize (e.g., 'Safari', 'Code')",
+      },
+      left_app: {
+        type: "string",
+        description: "For split layout: app name for left side (optional, defaults to current frontmost)",
+      },
+      right_app: {
+        type: "string",
+        description: "For split layout: app name for right side (optional, auto-detected if not specified)",
+      },
+    },
+    required: ["layout"],
+  },
+  handler: async ({ layout, app_name, left_app, right_app }: { layout: string; app_name?: string; left_app?: string; right_app?: string }) => {
+    try {
+      if (layout === "maximize" && app_name) {
+        const escaped = escapeAppleScriptString(app_name);
+        const { getWidth, getHeight } = getNativeApis().screen;
+        const sw = getWidth();
+        const sh = getHeight();
+        await runAppleScript(`
+          tell application "System Events"
+            tell application process "${escaped}"
+              set frontmost to true
+              tell window 1
+                set position to {0, 25}
+                set size to {${sw}, ${sh - 25}}
+              end tell
+            end tell
+          end tell
+        `);
+        return { success: true, message: `Maximized ${app_name} (${sw}x${sh})` };
+      } else if (layout === "split") {
+        // Use native screen size (instant) instead of AppleScript Finder query
+        const { getWidth, getHeight } = getNativeApis().screen;
+        const screenWidth = getWidth();
+        const screenHeight = getHeight();
+        const halfWidth = Math.floor(screenWidth / 2);
+
+        // Get frontmost app in parallel with nothing else blocking
+        let leftAppName = left_app;
+        if (!leftAppName) {
+          leftAppName = await runAppleScript(`
+            tell application "System Events"
+              return name of first application process whose frontmost is true
+            end tell
+          `, 5000);
+        }
+
+        const leftEscaped = escapeAppleScriptString(leftAppName);
+
+        // Position both windows in parallel if both apps are known
+        const leftScript = `
+          tell application "System Events"
+            tell application process "${leftEscaped}"
+              set frontmost to true
+              if exists window 1 then
+                tell window 1
+                  set position to {0, 25}
+                  set size to {${halfWidth}, ${screenHeight - 25}}
+                end tell
+              end if
+            end tell
+          end tell
+        `;
+
+        if (right_app) {
+          const rightEscaped = escapeAppleScriptString(right_app);
+          const rightScript = `
+            tell application "System Events"
+              tell application process "${rightEscaped}"
+                set frontmost to true
+                if exists window 1 then
+                  tell window 1
+                    set position to {${halfWidth}, 25}
+                    set size to {${halfWidth}, ${screenHeight - 25}}
+                  end tell
+                end if
+              end tell
+            end tell
+          `;
+          await Promise.all([runAppleScript(leftScript), runAppleScript(rightScript)]);
+        } else {
+          await runAppleScript(leftScript);
+        }
+
+        return {
+          success: true,
+          message: `Arranged windows in split layout${right_app ? ` with ${leftAppName} on left and ${right_app} on right` : ` with ${leftAppName} on left`}`
+        };
+      } else if (layout === "cascade") {
+        await runAppleScript(`
+          tell application "System Events"
+            set allApps to every application process whose background only is false and visible is true
+            set xPos to 50
+            set yPos to 50
+            repeat with appProc in allApps
+              if count of windows of appProc > 0 then
+                tell window 1 of appProc
+                  set position to {xPos, yPos}
+                end tell
+                set xPos to xPos + 30
+                set yPos to yPos + 30
+              end if
+            end repeat
+          end tell
+        `, 15000);
+        return { success: true, message: "Arranged windows in cascade layout" };
+      } else if (layout === "minimize_all") {
+        await runAppleScript(`
+          tell application "System Events"
+            set allApps to every application process whose background only is false
+            repeat with appProc in allApps
+              if count of windows of appProc > 0 then
+                set visible of appProc to false
+              end if
+            end repeat
+          end tell
+        `, 15000);
+        return { success: true, message: "Minimized all windows" };
+      } else if (layout === "restore_all") {
+        await runAppleScript(`
+          tell application "System Events"
+            set allApps to every application process whose background only is false
+            repeat with appProc in allApps
+              if count of windows of appProc > 0 then
+                set visible of appProc to true
+              end if
+            end repeat
+          end tell
+        `, 15000);
+        return { success: true, message: "Restored all windows" };
+      }
+
+      return { success: false, error: `Unknown layout: ${layout}` };
+    } catch (error: any) {
+      return { success: false, error: `Failed to arrange windows: ${error.message}` };
+    }
+  },
+});
+
+const focusWindowTool = defineTool("focus_window", {
+  description: "Bring a specific application window to the front and make it active/focused on macOS.",
+  parameters: {
+    type: "object",
+    properties: {
+      app_name: {
+        type: "string",
+        description: "The application name to focus (e.g., 'Safari', 'Visual Studio Code', 'Terminal')",
+      },
+    },
+    required: ["app_name"],
+  },
+  handler: async ({ app_name }: { app_name: string }) => {
+    try {
+      const escaped = escapeAppleScriptString(app_name);
+      await runAppleScript(`
+        tell application "System Events"
+          tell application process "${escaped}"
+            set frontmost to true
+          end tell
+        end tell
+      `, 5000);
+      return { success: true, message: `Focused ${app_name}` };
+    } catch (error: any) {
+      return { success: false, error: `Failed to focus ${app_name}: ${error.message}. Make sure the app is running.` };
+    }
+  },
+});
+
+const closeWindowTool = defineTool("close_window", {
+  description: "Close the frontmost window of a specific application or the currently focused window on macOS.",
+  parameters: {
+    type: "object",
+    properties: {
+      app_name: {
+        type: "string",
+        description: "The application name whose window to close (e.g., 'Safari'). If not specified, closes the currently focused window.",
+      },
+    },
+  },
+  handler: async ({ app_name }: { app_name?: string }) => {
+    try {
+      if (app_name) {
+        const escaped = escapeAppleScriptString(app_name);
+        await runAppleScript(`
+          tell application "System Events"
+            tell application process "${escaped}"
+              if count of windows > 0 then
+                click button 1 of window 1
+              end if
+            end tell
+          end tell
+        `, 5000);
+        return { success: true, message: `Closed window of ${app_name}` };
+      } else {
+        await runAppleScript('tell application "System Events" to keystroke "w" using command down', 3000);
+        return { success: true, message: "Closed currently focused window" };
+      }
+    } catch (error: any) {
+      return { success: false, error: `Failed to close window: ${error.message}` };
+    }
+  },
+});
+
+// Notes tools (quick notes / sticky notes)
+const createNoteTool = defineTool("create_note", {
+  description: "Create a new sticky note/quick note. The note will be saved and can be retrieved later.",
+  parameters: {
+    type: "object",
+    properties: {
+      content: {
+        type: "string",
+        description: "The content/text of the note to save",
+      },
+    },
+    required: ["content"],
+  },
+  handler: async ({ content }: { content: string }) => {
+    try {
+      const id = createNote(content);
+      return {
+        success: true,
+        id,
+        content,
+        message: `Note created with ID ${id}`,
+        preview: content.length > 50 ? content.substring(0, 50) + "..." : content
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to create note: ${error.message}`
+      };
+    }
+  },
+});
+
+const listNotesTool = defineTool("list_notes", {
+  description: "List all saved notes/quick notes. Returns notes sorted by most recently updated.",
+  parameters: {
+    type: "object",
+    properties: {
+      limit: {
+        type: "number",
+        description: "Maximum number of notes to return (default: 20)",
+      },
+    },
+  },
+  handler: async ({ limit }: { limit?: number }) => {
+    try {
+      const notes = listNotes(limit || 20);
+      return {
+        success: true,
+        count: notes.length,
+        notes: notes.map(n => ({
+          id: n.id,
+          preview: n.content.length > 100 ? n.content.substring(0, 100) + "..." : n.content,
+          content: n.content,
+          created_at: n.created_at,
+          updated_at: n.updated_at
+        })),
+        message: notes.length === 0 ? "No notes found" : `Found ${notes.length} note(s)`
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to list notes: ${error.message}`
+      };
+    }
+  },
+});
+
+const getNoteTool = defineTool("get_note", {
+  description: "Get the full content of a specific note by its ID.",
+  parameters: {
+    type: "object",
+    properties: {
+      id: {
+        type: "number",
+        description: "The ID of the note to retrieve",
+      },
+    },
+    required: ["id"],
+  },
+  handler: async ({ id }: { id: number }) => {
+    try {
+      const note = getNote(id);
+      if (!note) {
+        return {
+          success: false,
+          error: `Note with ID ${id} not found`
+        };
+      }
+      return {
+        success: true,
+        id: note.id,
+        content: note.content,
+        created_at: note.created_at,
+        updated_at: note.updated_at
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to get note: ${error.message}`
+      };
+    }
+  },
+});
+
+const updateNoteTool = defineTool("update_note", {
+  description: "Update the content of an existing note by its ID.",
+  parameters: {
+    type: "object",
+    properties: {
+      id: {
+        type: "number",
+        description: "The ID of the note to update",
+      },
+      content: {
+        type: "string",
+        description: "The new content for the note",
+      },
+    },
+    required: ["id", "content"],
+  },
+  handler: async ({ id, content }: { id: number; content: string }) => {
+    try {
+      const note = getNote(id);
+      if (!note) {
+        return {
+          success: false,
+          error: `Note with ID ${id} not found`
+        };
+      }
+      updateNote(id, content);
+      return {
+        success: true,
+        id,
+        message: `Note ${id} updated successfully`,
+        preview: content.length > 50 ? content.substring(0, 50) + "..." : content
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to update note: ${error.message}`
+      };
+    }
+  },
+});
+
+const searchNotesTool = defineTool("search_notes", {
+  description: "Search through all notes by content. Returns notes that contain the search query.",
+  parameters: {
+    type: "object",
+    properties: {
+      query: {
+        type: "string",
+        description: "The search term to look for in notes",
+      },
+      limit: {
+        type: "number",
+        description: "Maximum number of results to return (default: 10)",
+      },
+    },
+    required: ["query"],
+  },
+  handler: async ({ query, limit }: { query: string; limit?: number }) => {
+    try {
+      const notes = searchNotes(query, limit || 10);
+      return {
+        success: true,
+        query,
+        count: notes.length,
+        notes: notes.map(n => ({
+          id: n.id,
+          preview: n.content.length > 100 ? n.content.substring(0, 100) + "..." : n.content,
+          content: n.content,
+          created_at: n.created_at,
+          updated_at: n.updated_at
+        })),
+        message: notes.length === 0 ? `No notes found matching "${query}"` : `Found ${notes.length} note(s) matching "${query}"`
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to search notes: ${error.message}`
+      };
+    }
+  },
+});
+
+const deleteNoteTool = defineTool("delete_note", {
+  description: "Delete a specific note by its ID.",
+  parameters: {
+    type: "object",
+    properties: {
+      id: {
+        type: "number",
+        description: "The ID of the note to delete",
+      },
+    },
+    required: ["id"],
+  },
+  handler: async ({ id }: { id: number }) => {
+    try {
+      const note = getNote(id);
+      if (!note) {
+        return {
+          success: false,
+          error: `Note with ID ${id} not found`
+        };
+      }
+      deleteNote(id);
+      return {
+        success: true,
+        id,
+        message: `Note ${id} deleted successfully`,
+        deleted_preview: note.content.length > 50 ? note.content.substring(0, 50) + "..." : note.content
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to delete note: ${error.message}`
+      };
+    }
+  },
+});
+
+const deleteAllNotesTool = defineTool("delete_all_notes", {
+  description: "Delete all saved notes. Use with caution - this cannot be undone!",
+  parameters: {
+    type: "object",
+    properties: {
+      confirm: {
+        type: "boolean",
+        description: "Must be set to true to confirm deletion of all notes",
+      },
+    },
+    required: ["confirm"],
+  },
+  handler: async ({ confirm }: { confirm: boolean }) => {
+    if (!confirm) {
+      return {
+        success: false,
+        error: "Confirmation required. Set confirm to true to delete all notes."
+      };
+    }
+    try {
+      const countBefore = countNotes();
+      deleteAllNotes();
+      return {
+        success: true,
+        deleted_count: countBefore,
+        message: `Deleted all ${countBefore} note(s)`
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to delete all notes: ${error.message}`
+      };
+    }
+  },
+});
+
+// Calculator tool — opens macOS Calculator app
+const calculatorTool = defineTool("calculate", {
+  description: "Open the macOS Calculator app.",
+  parameters: {
+    type: "object",
+    properties: {},
+  },
+  handler: async () => {
+    try {
+      await execFileAsync("open", ["-a", "Calculator"]);
+      return { success: true, message: "Opened Calculator app" };
+    } catch (error: any) {
+      return { success: false, error: `Failed to open Calculator: ${error.message}` };
+    }
+  },
+});
+
+// Todo tools (SQLite-backed via database.ts)
+const createTodoTool = defineTool("create_todo", {
+  description: "Create a new todo item/task.",
+  parameters: {
+    type: "object",
+    properties: {
+      text: {
+        type: "string",
+        description: "The todo task description",
+      },
+    },
+    required: ["text"],
+  },
+  handler: async ({ text }: { text: string }) => {
+    try {
+      const id = createTodo(text);
+      return { success: true, id, text, message: `Created todo: "${text}"` };
+    } catch (error: any) {
+      return { success: false, error: `Failed to create todo: ${error.message}` };
+    }
+  },
+});
+
+const listTodosTool = defineTool("list_todos", {
+  description: "List all todo items, optionally filtered by completion status.",
+  parameters: {
+    type: "object",
+    properties: {
+      filter: {
+        type: "string",
+        enum: ["all", "active", "completed"],
+        description: "Filter todos by status: all, active (not completed), or completed",
+      },
+    },
+  },
+  handler: async ({ filter = "all" }: { filter?: "all" | "active" | "completed" }) => {
+    try {
+      const todoList = listTodos(filter);
+      return {
+        success: true,
+        count: todoList.length,
+        todos: todoList.map(t => ({
+          id: t.id,
+          text: t.content,
+          completed: t.completed,
+          createdAt: t.created_at
+        })),
+        message: `Found ${todoList.length} todo(s)`
+      };
+    } catch (error: any) {
+      return { success: false, error: `Failed to list todos: ${error.message}` };
+    }
+  },
+});
+
+const completeTodoTool = defineTool("complete_todo", {
+  description: "Mark a todo item as completed.",
+  parameters: {
+    type: "object",
+    properties: {
+      id: {
+        type: "number",
+        description: "The ID of the todo to complete",
+      },
+    },
+    required: ["id"],
+  },
+  handler: async ({ id }: { id: number }) => {
+    try {
+      const todo = getTodo(id);
+      if (!todo) {
+        return { success: false, error: `Todo with ID ${id} not found` };
+      }
+      completeTodo(id);
+      return { success: true, id, text: todo.content, message: `Completed: "${todo.content}"` };
+    } catch (error: any) {
+      return { success: false, error: `Failed to complete todo: ${error.message}` };
+    }
+  },
+});
+
+const deleteTodoTool = defineTool("delete_todo", {
+  description: "Delete a todo item by ID.",
+  parameters: {
+    type: "object",
+    properties: {
+      id: {
+        type: "number",
+        description: "The ID of the todo to delete",
+      },
+    },
+    required: ["id"],
+  },
+  handler: async ({ id }: { id: number }) => {
+    try {
+      const todo = getTodo(id);
+      if (!todo) {
+        return { success: false, error: `Todo with ID ${id} not found` };
+      }
+      deleteTodo(id);
+      return { success: true, id, text: todo.content, message: `Deleted: "${todo.content}"` };
+    } catch (error: any) {
+      return { success: false, error: `Failed to delete todo: ${error.message}` };
+    }
+  },
+});
+
+// Code runner tool
+const runCodeTool = defineTool("run_code", {
+  description: "Execute Python or JavaScript code. Use with caution and only run trusted code.",
+  parameters: {
+    type: "object",
+    properties: {
+      language: {
+        type: "string",
+        enum: ["python", "javascript"],
+        description: "Programming language to execute",
+      },
+      code: {
+        type: "string",
+        description: "The code to execute",
+      },
+      timeout: {
+        type: "number",
+        description: "Timeout in seconds (default: 30)",
+      },
+    },
+    required: ["language", "code"],
+  },
+  handler: async ({ language, code, timeout = 30 }: { language: "python" | "javascript"; code: string; timeout?: number }) => {
+    const maxTimeout = Math.min(timeout, 60); // Cap at 60 seconds
+    const ext = language === "python" ? ".py" : ".js";
+    const tmpFile = join(tmpdir(), `copilot-bar-code-${Date.now()}${ext}`);
+    try {
+      // Write code to a temp file to avoid shell escaping issues entirely
+      await writeFileAsync(tmpFile, code, "utf-8");
+      const cmd = language === "python" ? "python3" : "node";
+      const { stdout, stderr } = await execFileAsync(cmd, [tmpFile], { timeout: maxTimeout * 1000 });
+      return {
+        success: true,
+        language,
+        output: stdout || "(no output)",
+        error: stderr || null,
+        message: stderr ? `Execution completed with warnings` : `Execution successful`
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Execution failed: ${error.message}`,
+        output: error.stdout || "",
+        stderr: error.stderr || ""
+      };
+    } finally {
+      try { await unlinkAsync(tmpFile); } catch {}
+    }
+  },
+});
+
+// AirDrop toggle tool
+const toggleAirDropTool = defineTool("toggle_airdrop", {
+  description: "Enable or disable AirDrop on macOS.",
+  parameters: {
+    type: "object",
+    properties: {
+      enable: {
+        type: "boolean",
+        description: "true to enable AirDrop, false to disable",
+      },
+    },
+    required: ["enable"],
+  },
+  handler: async ({ enable }: { enable: boolean }) => {
+    try {
+      const value = enable ? "false" : "true";
+      await execFileAsync("defaults", ["write", "com.apple.NetworkBrowser", "DisableAirDrop", "-bool", value]);
+      return {
+        success: true,
+        enabled: enable,
+        message: `AirDrop ${enable ? "enabled" : "disabled"}. You may need to restart Finder for changes to take effect.`
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to toggle AirDrop: ${error.message}`
+      };
+    }
+  },
+});
+
+// Clipboard history tools
+const getClipboardTool = defineTool("get_clipboard", {
+  description: "Get the current contents of the clipboard.",
+  parameters: {
+    type: "object",
+    properties: {},
+  },
+  handler: async () => {
+    try {
+      const { stdout } = await execFileAsync("pbpaste", []);
+      return {
+        success: true,
+        content: stdout,
+        message: stdout ? "Clipboard content retrieved" : "Clipboard is empty"
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to read clipboard: ${error.message}`
+      };
+    }
+  },
+});
+
+const setClipboardTool = defineTool("set_clipboard", {
+  description: "Set the clipboard contents.",
+  parameters: {
+    type: "object",
+    properties: {
+      text: {
+        type: "string",
+        description: "Text to copy to clipboard",
+      },
+    },
+    required: ["text"],
+  },
+  handler: async ({ text }: { text: string }) => {
+    try {
+      // Use execFile with stdin to avoid shell injection
+      const proc = require("node:child_process").spawn("pbcopy");
+      proc.stdin.write(text);
+      proc.stdin.end();
+      await new Promise<void>((resolve, reject) => {
+        proc.on("close", (code: number) => code === 0 ? resolve() : reject(new Error(`pbcopy exited with code ${code}`)));
+        proc.on("error", reject);
+      });
+      return {
+        success: true,
+        message: `Copied to clipboard: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`
+      };
+    } catch (error: any) {
+      return { success: false, error: `Failed to set clipboard: ${error.message}` };
+    }
+  },
+});
+
+const clearClipboardTool = defineTool("clear_clipboard", {
+  description: "Clear the clipboard contents.",
+  parameters: {
+    type: "object",
+    properties: {},
+  },
+  handler: async () => {
+    try {
+      const proc = require("node:child_process").spawn("pbcopy");
+      proc.stdin.write("");
+      proc.stdin.end();
+      await new Promise<void>((resolve, reject) => {
+        proc.on("close", (code: number) => code === 0 ? resolve() : reject(new Error(`pbcopy exited with code ${code}`)));
+        proc.on("error", reject);
+      });
+      return { success: true, message: "Clipboard cleared" };
+    } catch (error: any) {
+      return { success: false, error: `Failed to clear clipboard: ${error.message}` };
+    }
+  },
+});
+
+// URL summarizer tool
+const summarizeUrlTool = defineTool("summarize_url", {
+  description: "Fetch and summarize content from a web page URL.",
+  parameters: {
+    type: "object",
+    properties: {
+      url: {
+        type: "string",
+        description: "The URL to fetch and summarize",
+      },
+      max_length: {
+        type: "number",
+        description: "Maximum length of summary in characters (default: 500)",
+      },
+    },
+    required: ["url"],
+  },
+  handler: async ({ url, max_length = 500 }: { url: string; max_length?: number }) => {
+    try {
+      // Use execFile to avoid shell injection via URL
+      const { stdout } = await execFileAsync("curl", ["-sL", url, "--max-time", "10"], { timeout: 15000 });
+      
+      // Simple HTML to text extraction (remove tags)
+      let text = stdout
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      
+      // Extract title
+      const titleMatch = stdout.match(/<title[^>]*>([^<]*)<\/title>/i);
+      const title = titleMatch ? titleMatch[1].trim() : 'Unknown';
+      
+      // Get first paragraph or meaningful content (simplified)
+      const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 20);
+      let summary = sentences.slice(0, 3).join('. ').trim();
+      
+      if (summary.length > max_length) {
+        summary = summary.substring(0, max_length) + '...';
+      }
+      
+      return {
+        success: true,
+        url,
+        title,
+        summary,
+        full_length: text.length,
+        message: `Summarized "${title}"`
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to fetch URL: ${error.message}`
+      };
+    }
+  },
+});
+
+// Music control tools - helper to get the AppleScript app name
+function musicAppName(app: "spotify" | "music"): string {
+  return app === "spotify" ? "Spotify" : "Music";
+}
+
+const playMusicTool = defineTool("play_music", {
+  description: "Play music in Spotify or Apple Music.",
+  parameters: {
+    type: "object",
+    properties: {
+      app: { type: "string", enum: ["spotify", "music"], description: "Which app to control: 'spotify' or 'music' (Apple Music)" },
+    },
+    required: ["app"],
+  },
+  handler: async ({ app }: { app: "spotify" | "music" }) => {
+    try {
+      await runAppleScript(`tell application "${musicAppName(app)}" to play`);
+      return { success: true, app, action: "play", message: `Started playing in ${musicAppName(app)}` };
+    } catch (error: any) {
+      return { success: false, error: `Failed to play music: ${error.message}` };
+    }
+  },
+});
+
+const pauseMusicTool = defineTool("pause_music", {
+  description: "Pause music in Spotify or Apple Music.",
+  parameters: {
+    type: "object",
+    properties: {
+      app: { type: "string", enum: ["spotify", "music"], description: "Which app to control: 'spotify' or 'music' (Apple Music)" },
+    },
+    required: ["app"],
+  },
+  handler: async ({ app }: { app: "spotify" | "music" }) => {
+    try {
+      await runAppleScript(`tell application "${musicAppName(app)}" to pause`);
+      return { success: true, app, action: "pause", message: `Paused ${musicAppName(app)}` };
+    } catch (error: any) {
+      return { success: false, error: `Failed to pause music: ${error.message}` };
+    }
+  },
+});
+
+const nextTrackTool = defineTool("next_track", {
+  description: "Skip to the next track in Spotify or Apple Music.",
+  parameters: {
+    type: "object",
+    properties: {
+      app: { type: "string", enum: ["spotify", "music"], description: "Which app to control: 'spotify' or 'music' (Apple Music)" },
+    },
+    required: ["app"],
+  },
+  handler: async ({ app }: { app: "spotify" | "music" }) => {
+    try {
+      await runAppleScript(`tell application "${musicAppName(app)}" to next track`);
+      return { success: true, app, action: "next", message: `Skipped to next track in ${musicAppName(app)}` };
+    } catch (error: any) {
+      return { success: false, error: `Failed to skip track: ${error.message}` };
+    }
+  },
+});
+
+const previousTrackTool = defineTool("previous_track", {
+  description: "Go to the previous track in Spotify or Apple Music.",
+  parameters: {
+    type: "object",
+    properties: {
+      app: { type: "string", enum: ["spotify", "music"], description: "Which app to control: 'spotify' or 'music' (Apple Music)" },
+    },
+    required: ["app"],
+  },
+  handler: async ({ app }: { app: "spotify" | "music" }) => {
+    try {
+      await runAppleScript(`tell application "${musicAppName(app)}" to previous track`);
+      return { success: true, app, action: "previous", message: `Went to previous track in ${musicAppName(app)}` };
+    } catch (error: any) {
+      return { success: false, error: `Failed to go to previous track: ${error.message}` };
+    }
+  },
+});
+
+const getMusicStatusTool = defineTool("get_music_status", {
+  description: "Get current playback status from Spotify or Apple Music.",
+  parameters: {
+    type: "object",
+    properties: {
+      app: { type: "string", enum: ["spotify", "music"], description: "Which app to check: 'spotify' or 'music' (Apple Music)" },
+    },
+    required: ["app"],
+  },
+  handler: async ({ app }: { app: "spotify" | "music" }) => {
+    try {
+      const appName = musicAppName(app);
+      const stdout = await runAppleScript(`tell application "${appName}"
+        if player state is playing then
+          return "Playing: " & name of current track & " by " & artist of current track
+        else
+          return "Paused: " & name of current track & " by " & artist of current track
+        end if
+      end tell`);
+      return { success: true, app, status: stdout, message: stdout };
+    } catch (error: any) {
+      return { success: false, error: `Failed to get music status: ${error.message}` };
+    }
+  },
+});
+
+// Voice input tool (speech to text simulation)
+const speechToTextTool = defineTool("speech_to_text", {
+  description: "Activate macOS dictation/speech recognition to convert speech to text. Note: This opens the dictation interface.",
+  parameters: {
+    type: "object",
+    properties: {
+      duration: {
+        type: "number",
+        description: "Duration in seconds to listen for (default: 10)",
+      },
+    },
+  },
+  handler: async ({ duration = 10 }: { duration?: number }) => {
+    try {
+      await runAppleScript('tell application "System Events" to key code 63 using {fn down}', 5000);
+      return {
+        success: true,
+        message: `Speech recognition activated. Please speak for up to ${duration} seconds. Note: You'll need to manually stop dictation when done.`,
+        note: "This opens macOS dictation. The actual transcription happens in the active text field."
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        message: "Failed to activate speech dictation. You may need to press Fn twice manually.",
+        note: "macOS dictation must be enabled in System Preferences > Keyboard > Dictation",
+        error: error.message
+      };
+    }
+  },
+});
+
+// Text-to-speech tool
+const speakTextTool = defineTool("speak_text", {
+  description: "Convert text to speech using macOS say command.",
+  parameters: {
+    type: "object",
+    properties: {
+      text: {
+        type: "string",
+        description: "Text to speak aloud",
+      },
+      voice: {
+        type: "string",
+        description: "Voice to use (e.g., 'Alex', 'Samantha', 'Victoria'). Default: system default",
+      },
+      rate: {
+        type: "number",
+        description: "Speech rate (words per minute). Default: 175",
+      },
+    },
+    required: ["text"],
+  },
+  handler: async ({ text, voice, rate = 175 }: { text: string; voice?: string; rate?: number }) => {
+    try {
+      // Use execFile to avoid shell injection; run in background with .catch()
+      const args = [text, "-r", String(rate)];
+      if (voice) {
+        args.push("-v", voice);
+      }
+      execFileAsync("say", args).catch((err) => {
+        console.error("TTS error:", err.message);
+      });
+
+      return {
+        success: true,
+        text: text.substring(0, 100) + (text.length > 100 ? '...' : ''),
+        voice: voice || "default",
+        rate,
+        message: `Speaking: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`
+      };
+    } catch (error: any) {
+      return { success: false, error: `Failed to speak text: ${error.message}` };
+    }
+  },
+});
+
+// Weather tool
+const getWeatherTool = defineTool("get_weather", {
+  description: "Get current weather information for a location using wttr.in API.",
+  parameters: {
+    type: "object",
+    properties: {
+      location: {
+        type: "string",
+        description: "City name or location (e.g., 'London', 'New York', 'Tokyo')",
+      },
+      format: {
+        type: "string",
+        enum: ["brief", "full"],
+        description: "Weather format: brief (one line) or full (detailed)",
+      },
+    },
+    required: ["location"],
+  },
+  handler: async ({ location, format = "brief" }: { location: string; format?: "brief" | "full" }) => {
+    try {
+      const encodedLocation = encodeURIComponent(location);
+      const formatFlag = format === "brief" ? "?format=%l:+%c+%t+%w" : "";
+      const { stdout } = await execFileAsync("curl", ["-s", `wttr.in/${encodedLocation}${formatFlag}`, "--max-time", "10"], { timeout: 15000 });
+      
+      if (stdout.includes("Unknown location")) {
+        return {
+          success: false,
+          error: `Unknown location: "${location}"`
+        };
+      }
+      
+      return {
+        success: true,
+        location,
+        weather: stdout.trim(),
+        message: `Weather for ${location}: ${stdout.trim().substring(0, 100)}`
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to fetch weather: ${error.message}`
+      };
+    }
+  },
+});
+
+// Image drop/analysis tool
+const analyzeImageTool = defineTool("analyze_image", {
+  description: "Analyze or describe an image file. Uses macOS system tools to extract basic image information.",
+  parameters: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Path to the image file to analyze",
+      },
+    },
+    required: ["path"],
+  },
+  handler: async ({ path: imagePath }: { path: string }) => {
+    try {
+      // Run mdls and sips in parallel
+      const [mdlsResult, sipsResult] = await Promise.all([
+        execFileAsync("mdls", [imagePath]),
+        execFileAsync("sips", ["-g", "pixelWidth", "-g", "pixelHeight", imagePath]).catch(() => null),
+      ]);
+      const mdlsOutput = mdlsResult.stdout;
+
+      let dimensions = "Unknown";
+      if (sipsResult) {
+        const widthMatch = sipsResult.stdout.match(/pixelWidth: (\d+)/);
+        const heightMatch = sipsResult.stdout.match(/pixelHeight: (\d+)/);
+        if (widthMatch && heightMatch) {
+          dimensions = `${widthMatch[1]}x${heightMatch[2]}`;
+        }
+      }
+
+      // Extract relevant metadata
+      const fileSizeMatch = mdlsOutput.match(/kMDItemFSSize = (\d+)/);
+      const contentTypeMatch = mdlsOutput.match(/kMDItemContentType = "([^"]+)"/);
+      const creationDateMatch = mdlsOutput.match(/kMDItemFSCreationDate = ([^\n]+)/);
+      
+      return {
+        success: true,
+        path: imagePath,
+        dimensions,
+        file_size: fileSizeMatch ? `${(parseInt(fileSizeMatch[1]) / 1024 / 1024).toFixed(2)} MB` : "Unknown",
+        content_type: contentTypeMatch ? contentTypeMatch[1] : "Unknown",
+        created: creationDateMatch ? creationDateMatch[1] : "Unknown",
+        message: `Image analysis complete: ${dimensions}, ${fileSizeMatch ? (parseInt(fileSizeMatch[1]) / 1024 / 1024).toFixed(2) + ' MB' : 'Unknown size'}`
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        error: `Failed to analyze image: ${error.message}`
       };
     }
   },
@@ -1096,6 +2275,7 @@ const systemTools = [
   setVolumeTool,
   getVolumeTool,
   muteTool,
+  getBrightnessTool,
   setBrightnessTool,
   runShellTool,
   openAppTool,
@@ -1109,6 +2289,38 @@ const systemTools = [
   setBluetoothTool,
   getBluetoothStatusTool,
   toggleBluetoothTool,
+  listBluetoothDevicesTool,
+  listWindowsTool,
+  arrangeWindowsTool,
+  focusWindowTool,
+  closeWindowTool,
+  createNoteTool,
+  listNotesTool,
+  getNoteTool,
+  updateNoteTool,
+  searchNotesTool,
+  deleteNoteTool,
+  deleteAllNotesTool,
+  calculatorTool,
+  createTodoTool,
+  listTodosTool,
+  completeTodoTool,
+  deleteTodoTool,
+  runCodeTool,
+  toggleAirDropTool,
+  getClipboardTool,
+  setClipboardTool,
+  clearClipboardTool,
+  summarizeUrlTool,
+  playMusicTool,
+  pauseMusicTool,
+  nextTrackTool,
+  previousTrackTool,
+  getMusicStatusTool,
+  speechToTextTool,
+  speakTextTool,
+  getWeatherTool,
+  analyzeImageTool,
   startTimerTool,
   startCountdownTool,
   startPomodoroTool,
@@ -1177,6 +2389,11 @@ export class CopilotService {
     });
 
     session.on((event) => {
+      console.log("[session event]", event.type, JSON.stringify(event.data).substring(0, 120));
+      if (event.type === "session.error") {
+        console.error("[session] error, evicting session:", sessionId);
+        this.sessions.delete(sessionId);
+      }
       if (event.type === "tool.execution_start" && this.onToolEvent) {
         this.activeTools.set(event.data.toolCallId, event.data.toolName);
         this.onToolEvent({
@@ -1252,12 +2469,22 @@ export class CopilotService {
       clearLastScreenshot();
     }
 
-    const response = await session.sendAndWait(
-      messageOptions,
-      120000 // 2 minute timeout
-    );
+    console.log("[chat] sending prompt:", prompt.substring(0, 80));
+    try {
+      const response = await session.sendAndWait(
+        messageOptions,
+        120000 // 2 minute timeout
+      );
 
-    return response?.data.content || "";
+      console.log("[chat] response received:", response?.data?.content?.substring(0, 100) || "(empty)");
+      return response?.data.content || "";
+    } catch (error: any) {
+      console.error("[chat] sendAndWait failed:", error.message);
+      // Session may be dead — evict it so a fresh one is created next time
+      this.sessions.delete(sessionId);
+      try { await session.destroy(); } catch {}
+      throw error;
+    }
   }
 
   async cleanup(): Promise<void> {

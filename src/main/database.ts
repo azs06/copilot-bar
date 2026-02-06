@@ -343,6 +343,170 @@ export function getActiveChatSession(): { id: number; title: string } {
   return { id: sid, title };
 }
 
+// Note functions
+export interface Note {
+  id: number;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function createNote(content: string): number {
+  const database = getDb();
+  database.run(
+    "INSERT INTO notes (content) VALUES (?)",
+    [content]
+  );
+  saveDb();
+  const id = getSingleNumber(database, "SELECT last_insert_rowid()");
+  if (!id || id <= 0) throw new Error("Failed to create note");
+  return id;
+}
+
+export function updateNote(id: number, content: string): boolean {
+  const database = getDb();
+  database.run(
+    "UPDATE notes SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+    [content, id]
+  );
+  saveDb();
+  return true;
+}
+
+export function getNote(id: number): Note | null {
+  const database = getDb();
+  const result = database.exec(
+    "SELECT id, content, created_at, updated_at FROM notes WHERE id = ?",
+    [id]
+  );
+  if (result.length === 0 || result[0].values.length === 0) return null;
+  const row = result[0].values[0];
+  return {
+    id: row[0] as number,
+    content: row[1] as string,
+    created_at: row[2] as string,
+    updated_at: row[3] as string,
+  };
+}
+
+export function listNotes(limit: number = 50): Note[] {
+  const database = getDb();
+  const result = database.exec(
+    `SELECT id, content, created_at, updated_at FROM notes ORDER BY updated_at DESC LIMIT ?`,
+    [limit]
+  );
+  if (result.length === 0) return [];
+  return result[0].values.map((row) => ({
+    id: row[0] as number,
+    content: row[1] as string,
+    created_at: row[2] as string,
+    updated_at: row[3] as string,
+  }));
+}
+
+export function searchNotes(query: string, limit: number = 20): Note[] {
+  const database = getDb();
+  // Escape LIKE wildcards (% and _) in the user query
+  const escaped = query.replace(/%/g, "\\%").replace(/_/g, "\\_");
+  const searchPattern = `%${escaped}%`;
+  const result = database.exec(
+    `SELECT id, content, created_at, updated_at FROM notes WHERE content LIKE ? ESCAPE '\\' ORDER BY updated_at DESC LIMIT ?`,
+    [searchPattern, limit]
+  );
+  if (result.length === 0) return [];
+  return result[0].values.map((row) => ({
+    id: row[0] as number,
+    content: row[1] as string,
+    created_at: row[2] as string,
+    updated_at: row[3] as string,
+  }));
+}
+
+export function deleteNote(id: number): boolean {
+  const database = getDb();
+  database.run("DELETE FROM notes WHERE id = ?", [id]);
+  saveDb();
+  return true;
+}
+
+export function countNotes(): number {
+  const database = getDb();
+  return getSingleNumber(database, "SELECT COUNT(*) FROM notes") || 0;
+}
+
+export function deleteAllNotes(): void {
+  const database = getDb();
+  database.run("DELETE FROM notes");
+  saveDb();
+}
+
+// Todo functions
+export interface TodoItem {
+  id: number;
+  content: string;
+  completed: boolean;
+  created_at: string;
+}
+
+export function createTodo(content: string): number {
+  const database = getDb();
+  database.run("INSERT INTO todos (content) VALUES (?)", [content]);
+  saveDb();
+  const id = getSingleNumber(database, "SELECT last_insert_rowid()");
+  if (!id || id <= 0) throw new Error("Failed to create todo");
+  return id;
+}
+
+export function listTodos(filter: "all" | "active" | "completed" = "all", limit: number = 100): TodoItem[] {
+  const database = getDb();
+  let sql = "SELECT id, content, completed, created_at FROM todos";
+  const params: any[] = [];
+  if (filter === "active") {
+    sql += " WHERE completed = 0";
+  } else if (filter === "completed") {
+    sql += " WHERE completed = 1";
+  }
+  sql += " ORDER BY created_at DESC LIMIT ?";
+  params.push(limit);
+  const result = database.exec(sql, params);
+  if (result.length === 0) return [];
+  return result[0].values.map((row) => ({
+    id: row[0] as number,
+    content: row[1] as string,
+    completed: (row[2] as number) === 1,
+    created_at: row[3] as string,
+  }));
+}
+
+export function getTodo(id: number): TodoItem | null {
+  const database = getDb();
+  const result = database.exec(
+    "SELECT id, content, completed, created_at FROM todos WHERE id = ?",
+    [id]
+  );
+  if (result.length === 0 || result[0].values.length === 0) return null;
+  const row = result[0].values[0];
+  return {
+    id: row[0] as number,
+    content: row[1] as string,
+    completed: (row[2] as number) === 1,
+    created_at: row[3] as string,
+  };
+}
+
+export function completeTodo(id: number): boolean {
+  const database = getDb();
+  database.run("UPDATE todos SET completed = 1 WHERE id = ?", [id]);
+  saveDb();
+  return getTodo(id)?.completed === true;
+}
+
+export function deleteTodo(id: number): void {
+  const database = getDb();
+  database.run("DELETE FROM todos WHERE id = ?", [id]);
+  saveDb();
+}
+
 // Close database
 export function closeDb(): void {
   if (db) {
