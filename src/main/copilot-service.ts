@@ -1,4 +1,6 @@
 import { CopilotClient, type CopilotSession, type ModelInfo } from "@github/copilot-sdk";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { loadConfig } from "./database.js";
 import { allTools } from "./tools/index.js";
 import { getLastScreenshot, clearLastScreenshot } from "./tools/helpers.js";
@@ -84,6 +86,14 @@ export class CopilotService {
     return this.client!.listModels();
   }
 
+  /** Destroy a session and permanently delete its persisted data so it doesn't
+   *  appear in VS Code's Copilot Chat sessions list. */
+  private async destroyAndDelete(session: CopilotSession): Promise<void> {
+    const sid = session.sessionId;
+    try { await session.destroy(); } catch {}
+    try { await this.client!.deleteSession(sid); } catch {}
+  }
+
   private async getOrCreateSession(sessionId: number, model: string): Promise<CopilotSession> {
     if (!this.client) {
       await this.initialize();
@@ -96,6 +106,7 @@ export class CopilotService {
       model,
       streaming: true,
       tools: allTools,
+      configDir: join(homedir(), ".copilot-bar", "copilot-state"),
       systemMessage: {
         mode: "append",
         content: SYSTEM_PROMPT,
@@ -201,7 +212,7 @@ export class CopilotService {
 
     // Recreate session if model changed
     if (this.sessions.size > 0 && this.currentModel !== config.model) {
-      await Promise.allSettled(Array.from(this.sessions.values()).map((s) => s.destroy()));
+      await Promise.allSettled(Array.from(this.sessions.values()).map((s) => this.destroyAndDelete(s)));
       this.sessions.clear();
     }
 
@@ -231,9 +242,9 @@ export class CopilotService {
       return response?.data.content || "";
     } catch (error: any) {
       console.error("[chat] sendAndWait failed:", error.message);
-      // Session may be dead — evict it so a fresh one is created next time
+      // Session may be dead — evict and delete so it doesn't linger in Copilot history
       this.sessions.delete(sessionId);
-      try { await session.destroy(); } catch {}
+      await this.destroyAndDelete(session);
       throw error;
     }
   }
@@ -256,8 +267,8 @@ export class CopilotService {
         return { success: false, error: "Failed to generate summary" };
       }
 
-      // Destroy old session
-      await session.destroy();
+      // Destroy old session and delete its persisted data
+      await this.destroyAndDelete(session);
       this.sessions.delete(sessionId);
 
       // Create a fresh session primed with the summary
@@ -277,8 +288,8 @@ export class CopilotService {
   }
 
   async cleanup(): Promise<void> {
-    if (this.sessions.size > 0) {
-      await Promise.allSettled(Array.from(this.sessions.values()).map((s) => s.destroy()));
+    if (this.client && this.sessions.size > 0) {
+      await Promise.allSettled(Array.from(this.sessions.values()).map((s) => this.destroyAndDelete(s)));
       this.sessions.clear();
     }
     if (this.client) {
