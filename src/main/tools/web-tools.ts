@@ -130,7 +130,7 @@ const analyzeImageTool = defineTool("analyze_image", {
         const widthMatch = sipsResult.stdout.match(/pixelWidth: (\d+)/);
         const heightMatch = sipsResult.stdout.match(/pixelHeight: (\d+)/);
         if (widthMatch && heightMatch) {
-          dimensions = `${widthMatch[1]}x${heightMatch[2]}`;
+          dimensions = `${widthMatch[1]}x${heightMatch[1]}`;
         }
       }
 

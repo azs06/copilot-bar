@@ -57,8 +57,9 @@ function ensureDefaultChatSession(database: SqlJsDatabase): number {
   if (existing) return existing;
 
   database.run("INSERT INTO chat_sessions (title) VALUES (?)", [formatSessionTitleFromTimestamp()]);
+  const id = getSingleNumber(database, "SELECT last_insert_rowid()") || 1;
   saveDb();
-  return getSingleNumber(database, "SELECT last_insert_rowid()") || 1;
+  return id;
 }
 
 function getActiveSessionId(database: SqlJsDatabase): number {
@@ -232,13 +233,13 @@ export function addChatMessage(role: string, content: string, sessionId?: number
     "INSERT INTO chat_history (role, content, session_id) VALUES (?, ?, ?)",
     [role, content, sid]
   );
+  const msgId = getSingleNumber(database, "SELECT last_insert_rowid()") || 0;
   database.run(
     "UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP, last_message_at = CURRENT_TIMESTAMP WHERE id = ?",
     [sid]
   );
   saveDb();
-  const result = database.exec("SELECT last_insert_rowid()");
-  return result[0]?.values[0]?.[0] as number || 0;
+  return msgId;
 }
 
 export function getChatHistory(sessionId?: number, limit: number = 100): ChatMessage[] {
@@ -290,8 +291,8 @@ export function createChatSession(title?: string): number {
   const database = getDb();
   const finalTitle = (title && title.trim()) ? title.trim() : formatSessionTitleFromTimestamp();
   database.run("INSERT INTO chat_sessions (title) VALUES (?)", [finalTitle]);
-  saveDb();
   const id = getSingleNumber(database, "SELECT last_insert_rowid()") || 0;
+  saveDb();
   if (id > 0) {
     setConfig("active_session_id", String(id));
   }
@@ -357,8 +358,8 @@ export function createNote(content: string): number {
     "INSERT INTO notes (content) VALUES (?)",
     [content]
   );
-  saveDb();
   const id = getSingleNumber(database, "SELECT last_insert_rowid()");
+  saveDb();
   if (!id || id <= 0) throw new Error("Failed to create note");
   return id;
 }
@@ -451,8 +452,8 @@ export interface TodoItem {
 export function createTodo(content: string): number {
   const database = getDb();
   database.run("INSERT INTO todos (content) VALUES (?)", [content]);
-  saveDb();
   const id = getSingleNumber(database, "SELECT last_insert_rowid()");
+  saveDb();
   if (!id || id <= 0) throw new Error("Failed to create todo");
   return id;
 }
