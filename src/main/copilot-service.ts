@@ -1,4 +1,4 @@
-import { CopilotClient, type CopilotSession } from "@github/copilot-sdk";
+import { CopilotClient, type CopilotSession, type ModelInfo } from "@github/copilot-sdk";
 import { loadConfig } from "./database.js";
 import { allTools } from "./tools/index.js";
 import { getLastScreenshot, clearLastScreenshot } from "./tools/helpers.js";
@@ -29,6 +29,20 @@ export interface StreamDelta {
   content: string;
 }
 
+export interface ScreenshotEvent {
+  path?: string;
+  url?: string;
+}
+
+export interface ModelUsageEvent {
+  model: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cost?: number;
+}
+
+export { ModelInfo };
+
 export class CopilotService {
   private client: CopilotClient | null = null;
   private sessions: Map<number, CopilotSession> = new Map();
@@ -36,6 +50,8 @@ export class CopilotService {
   private onToolEvent: ((event: ToolEvent) => void) | null = null;
   private onWidgetEvent: ((event: WidgetEvent) => void) | null = null;
   private onStreamDelta: ((delta: StreamDelta) => void) | null = null;
+  private onScreenshotEvent: ((event: ScreenshotEvent) => void) | null = null;
+  private onModelUsage: ((event: ModelUsageEvent) => void) | null = null;
   private activeTools: Map<string, string> = new Map(); // toolCallId -> toolName
 
   setToolEventHandler(handler: (event: ToolEvent) => void) {
@@ -50,9 +66,22 @@ export class CopilotService {
     this.onStreamDelta = handler;
   }
 
+  setScreenshotEventHandler(handler: (event: ScreenshotEvent) => void) {
+    this.onScreenshotEvent = handler;
+  }
+
+  setModelUsageHandler(handler: (event: ModelUsageEvent) => void) {
+    this.onModelUsage = handler;
+  }
+
   async initialize(): Promise<void> {
     this.client = new CopilotClient();
     await this.client.start();
+  }
+
+  async listModels(): Promise<ModelInfo[]> {
+    if (!this.client) await this.initialize();
+    return this.client!.listModels();
   }
 
   private async getOrCreateSession(sessionId: number, model: string): Promise<CopilotSession> {
@@ -96,6 +125,21 @@ export class CopilotService {
         }
       }
 
+      // Capture the actual model used per response
+      if (event.type === "assistant.usage" && this.onModelUsage && event.data.model) {
+        this.onModelUsage({
+          model: event.data.model,
+          inputTokens: event.data.inputTokens,
+          outputTokens: event.data.outputTokens,
+          cost: event.data.cost,
+        });
+      }
+
+      // Log selected model on session start
+      if (event.type === "session.start" && event.data.selectedModel) {
+        console.log("[session] selected model:", event.data.selectedModel);
+      }
+
       if (event.type === "tool.execution_start" && this.onToolEvent) {
         this.activeTools.set(event.data.toolCallId, event.data.toolName);
         this.onToolEvent({
@@ -115,10 +159,10 @@ export class CopilotService {
           });
         }
 
-        if (this.onWidgetEvent && event.data.result?.content) {
+        if (event.data.result?.content) {
           try {
             const result = JSON.parse(event.data.result.content);
-            if (result.widget) {
+            if (this.onWidgetEvent && result.widget) {
               this.onWidgetEvent({
                 type: result.widget,
                 duration: result.duration,
@@ -131,6 +175,11 @@ export class CopilotService {
                 savedNetworks: result.savedNetworks,
                 error: result.error,
               });
+            }
+            if (this.onScreenshotEvent && toolName === "capture_screenshot" && result.success) {
+              if (result.path || result.url) {
+                this.onScreenshotEvent({ path: result.path, url: result.url });
+              }
             }
           } catch {
             // ignore

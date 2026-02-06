@@ -200,6 +200,14 @@ app.whenReady().then(async () => {
     }
   });
 
+  ipcMain.handle("list-models", async () => {
+    try {
+      return { success: true, models: await copilotService.listModels() };
+    } catch (error) {
+      return { success: false, models: [], error: error instanceof Error ? error.message : "Failed to list models" };
+    }
+  });
+
   ipcMain.handle("quit-app", () => {
     app.quit();
   });
@@ -264,6 +272,20 @@ app.whenReady().then(async () => {
     copilotService.setStreamHandler((delta) => {
       if (mb.window) {
         mb.window.webContents.send("chat-delta", delta);
+      }
+    });
+
+    // Set up screenshot event handler to render screenshots inline in chat
+    copilotService.setScreenshotEventHandler((event) => {
+      if (mb.window) {
+        mb.window.webContents.send("screenshot-captured", event);
+      }
+    });
+
+    // Forward actual model usage info to renderer for badge verification
+    copilotService.setModelUsageHandler((event) => {
+      if (mb.window) {
+        mb.window.webContents.send("model-usage", event);
       }
     });
   });
