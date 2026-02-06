@@ -1852,6 +1852,37 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         return true;
       }
 
+      // --- Streaming state ---
+      let streamingBubble = null;
+      let streamingMessageId = null;
+      let streamedContent = "";
+
+      ipcRenderer.on("chat-delta", (_event, delta) => {
+        if (!isLoading) return; // ignore stray deltas
+
+        // New messageId means a new assistant message is starting
+        if (delta.messageId !== streamingMessageId) {
+          streamingMessageId = delta.messageId;
+          streamedContent = "";
+
+          // Replace typing indicator with a streaming bubble
+          hideTypingIndicator();
+
+          if (emptyState) { emptyState.remove(); emptyState = null; }
+          streamingBubble = document.createElement("div");
+          streamingBubble.className = "message assistant";
+          chatContainer.appendChild(streamingBubble);
+        }
+
+        streamedContent += delta.content;
+
+        // Render progressively as plain text (fast), markdown applied on finalize
+        if (streamingBubble) {
+          streamingBubble.textContent = streamedContent;
+          chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+      });
+
       async function sendMessage() {
         const prompt = input.value.trim();
         if (!prompt || isLoading) return;
@@ -1873,6 +1904,11 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         sendBtn.disabled = true;
         sendBtn.innerHTML = '<span class="loading"></span>';
 
+        // Reset streaming state
+        streamingBubble = null;
+        streamingMessageId = null;
+        streamedContent = "";
+
         addMessage(prompt, "user");
         input.value = "";
         input.style.height = "auto";
@@ -1884,14 +1920,37 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
           hideTypingIndicator();
 
           if (result.success) {
-            addMessage(result.result, "assistant");
+            if (streamingBubble) {
+              // Finalize: re-render with markdown and persist
+              try {
+                if (typeof marked?.parse === "function") {
+                  streamingBubble.innerHTML = marked.parse(result.result);
+                } else if (typeof marked === "function") {
+                  streamingBubble.innerHTML = marked(result.result);
+                } else {
+                  streamingBubble.textContent = result.result;
+                }
+              } catch (e) {
+                streamingBubble.textContent = result.result;
+              }
+              // Persist to DB
+              ipcRenderer.invoke("add-chat-message", "assistant", result.result, activeSession.id || undefined).catch(console.error);
+            } else {
+              // No streaming deltas arrived — fall back to standard message
+              addMessage(result.result, "assistant");
+            }
           } else {
+            if (streamingBubble) streamingBubble.remove();
             addMessage("Error: " + result.error, "error");
           }
         } catch (err) {
           hideTypingIndicator();
+          if (streamingBubble) streamingBubble.remove();
           addMessage("Error: " + err.message, "error");
         } finally {
+          streamingBubble = null;
+          streamingMessageId = null;
+          streamedContent = "";
           isLoading = false;
           sendBtn.disabled = false;
           sendBtn.textContent = "Send";

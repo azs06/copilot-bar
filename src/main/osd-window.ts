@@ -47,6 +47,10 @@ function getOrCreateWindow(): BrowserWindow {
   return osdWindow;
 }
 
+export function preWarmOSD(): void {
+  getOrCreateWindow();
+}
+
 export function showOSD(type: "volume" | "brightness" | "mute", level: number): void {
   const win = getOrCreateWindow();
 

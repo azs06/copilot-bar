@@ -24,12 +24,18 @@ export interface WidgetEvent {
   error?: string;
 }
 
+export interface StreamDelta {
+  messageId: string;
+  content: string;
+}
+
 export class CopilotService {
   private client: CopilotClient | null = null;
   private sessions: Map<number, CopilotSession> = new Map();
   private currentModel: string = "";
   private onToolEvent: ((event: ToolEvent) => void) | null = null;
   private onWidgetEvent: ((event: WidgetEvent) => void) | null = null;
+  private onStreamDelta: ((delta: StreamDelta) => void) | null = null;
   private activeTools: Map<string, string> = new Map(); // toolCallId -> toolName
 
   setToolEventHandler(handler: (event: ToolEvent) => void) {
@@ -38,6 +44,10 @@ export class CopilotService {
 
   setWidgetEventHandler(handler: (event: WidgetEvent) => void) {
     this.onWidgetEvent = handler;
+  }
+
+  setStreamHandler(handler: (delta: StreamDelta) => void) {
+    this.onStreamDelta = handler;
   }
 
   async initialize(): Promise<void> {
@@ -55,6 +65,7 @@ export class CopilotService {
 
     const session = await this.client!.createSession({
       model,
+      streaming: true,
       tools: allTools,
       systemMessage: {
         mode: "append",
@@ -73,6 +84,16 @@ export class CopilotService {
         this.onToolEvent({ type: "start", toolName: "context_compaction", toolCallId: "compaction" });
       } else if (event.type === "session.compaction_complete" && this.onToolEvent) {
         this.onToolEvent({ type: "complete", toolName: "context_compaction", toolCallId: "compaction" });
+      }
+
+      // Forward streaming deltas to the renderer (top-level messages only)
+      if (event.type === "assistant.message_delta" && this.onStreamDelta) {
+        if (event.data.deltaContent && !event.data.parentToolCallId) {
+          this.onStreamDelta({
+            messageId: event.data.messageId,
+            content: event.data.deltaContent,
+          });
+        }
       }
 
       if (event.type === "tool.execution_start" && this.onToolEvent) {

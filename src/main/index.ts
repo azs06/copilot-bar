@@ -23,6 +23,8 @@ import {
   setActiveChatSession,
 } from "./database.js";
 import { captureAndUpload } from "./screenshot-service.js";
+import { getNativeApis } from "./tools/native-apis.js";
+import { preWarmOSD } from "./osd-window.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -93,6 +95,10 @@ app.whenReady().then(async () => {
   console.log("Initializing Copilot service...");
   await copilotService.initialize();
   console.log("Copilot service initialized");
+
+  // Pre-warm native APIs and OSD window to eliminate first-call latency
+  try { getNativeApis(); } catch (e) { console.warn("Native API pre-warm failed:", e); }
+  preWarmOSD();
 
   // Register IPC handlers BEFORE creating menubar (which preloads window)
   ipcMain.handle("chat", async (_event, prompt: string, sessionId?: number) => {
@@ -251,6 +257,13 @@ app.whenReady().then(async () => {
     copilotService.setWidgetEventHandler((event) => {
       if (mb.window) {
         mb.window.webContents.send("render-widget", event);
+      }
+    });
+
+    // Set up streaming delta handler for progressive response rendering
+    copilotService.setStreamHandler((delta) => {
+      if (mb.window) {
+        mb.window.webContents.send("chat-delta", delta);
       }
     });
   });
