@@ -1521,6 +1521,7 @@
         { command: "/sessions", description: "Open chat sessions" },
         { command: "/rename", description: "Rename current chat (usage: /rename My Chat)" },
         { command: "/switch", description: "Switch chat (usage: /switch 3 or /switch My)" },
+        { command: "/compact", description: "Compact conversation (summarize & reset context)" },
       ];
 
       function renderCommandHint(items) {
@@ -1581,6 +1582,7 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
 - \`/sessions\` — Open chat sessions
 - \`/rename <title>\` — Rename the current chat session
 - \`/switch <id|title>\` — Switch to another chat session
+- \`/compact\` — Summarize & compact the conversation to free context space
 
 ## Chat & AI
 - Ask questions or request help: “Explain this error”, “Summarize these notes…”
@@ -1825,6 +1827,24 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
             }
             switchToSession(match.id).catch((e) => addMessage(`Error: ${e.message || e}`, "error"));
           });
+          return true;
+        }
+
+        if (command === "compact") {
+          addMessage("Compacting conversation…", "assistant", false);
+          showTypingIndicator();
+          try {
+            const result = await ipcRenderer.invoke("compact-session", activeSession.id || undefined);
+            hideTypingIndicator();
+            if (result.success) {
+              await loadChatHistory();
+            } else {
+              addMessage(`Compaction failed: ${result.error}`, "error");
+            }
+          } catch (e) {
+            hideTypingIndicator();
+            addMessage(`Compaction error: ${e.message}`, "error");
+          }
           return true;
         }
 

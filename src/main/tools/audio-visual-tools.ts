@@ -1,5 +1,6 @@
 import { defineTool } from "@github/copilot-sdk";
 import { getNativeApis } from "./native-apis.js";
+import { showOSD } from "../osd-window.js";
 
 const setVolumeTool = defineTool("set_volume", {
   description: "Set the system volume level on macOS. Volume should be between 0 (mute) and 100 (max).",
@@ -17,6 +18,7 @@ const setVolumeTool = defineTool("set_volume", {
     try {
       const level = Math.max(0, Math.min(100, volume));
       getNativeApis().volume.set(level / 100);
+      showOSD("volume", level);
       return { success: true, message: `Volume set to ${level}%` };
     } catch (error: any) {
       return { success: false, error: `Volume error: ${error.message}` };
@@ -55,6 +57,8 @@ const muteTool = defineTool("toggle_mute", {
   handler: async ({ mute }: { mute: boolean }) => {
     try {
       getNativeApis().volume.setMute(mute);
+      const currentVol = mute ? 0 : Math.round(getNativeApis().volume.get() * 100);
+      showOSD(mute ? "mute" : "volume", currentVol);
       return { success: true, message: mute ? "Muted" : "Unmuted" };
     } catch (error: any) {
       return { success: false, error: `Mute error: ${error.message}` };
@@ -106,6 +110,7 @@ const setBrightnessTool = defineTool("set_brightness", {
       if (action === "set" && level !== undefined) {
         const normalized = Math.max(0, Math.min(100, level)) / 100;
         api.set(normalized);
+        showOSD("brightness", Math.round(normalized * 100));
         return { success: true, brightness: Math.round(normalized * 100), message: `Brightness set to ${Math.round(normalized * 100)}%` };
       } else {
         const current = api.get();
@@ -113,6 +118,7 @@ const setBrightnessTool = defineTool("set_brightness", {
         const next = Math.max(0, Math.min(1, current + delta));
         api.set(next);
         const pct = Math.round(next * 100);
+        showOSD("brightness", pct);
         return { success: true, brightness: pct, message: `Brightness ${action === "up" ? "increased" : "decreased"} to ${pct}%` };
       }
     } catch (error: any) {

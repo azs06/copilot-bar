@@ -2,6 +2,7 @@ import { CopilotClient, type CopilotSession } from "@github/copilot-sdk";
 import { loadConfig } from "./database.js";
 import { allTools } from "./tools/index.js";
 import { getLastScreenshot, clearLastScreenshot } from "./tools/helpers.js";
+import { SYSTEM_PROMPT } from "./system-prompt.js";
 
 export interface ToolEvent {
   type: "start" | "complete";
@@ -55,6 +56,10 @@ export class CopilotService {
     const session = await this.client!.createSession({
       model,
       tools: allTools,
+      systemMessage: {
+        mode: "append",
+        content: SYSTEM_PROMPT,
+      },
     });
 
     session.on((event) => {
@@ -63,6 +68,13 @@ export class CopilotService {
         console.error("[session] error, evicting session:", sessionId);
         this.sessions.delete(sessionId);
       }
+      // Forward SDK automatic compaction events to the renderer
+      if (event.type === "session.compaction_start" && this.onToolEvent) {
+        this.onToolEvent({ type: "start", toolName: "context_compaction", toolCallId: "compaction" });
+      } else if (event.type === "session.compaction_complete" && this.onToolEvent) {
+        this.onToolEvent({ type: "complete", toolName: "context_compaction", toolCallId: "compaction" });
+      }
+
       if (event.type === "tool.execution_start" && this.onToolEvent) {
         this.activeTools.set(event.data.toolCallId, event.data.toolName);
         this.onToolEvent({
@@ -153,6 +165,44 @@ export class CopilotService {
       this.sessions.delete(sessionId);
       try { await session.destroy(); } catch {}
       throw error;
+    }
+  }
+
+  async compactSession(sessionId: number): Promise<{ success: boolean; summary?: string; error?: string }> {
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      return { success: false, error: "No active session to compact" };
+    }
+
+    try {
+      // Ask the current session to summarize the conversation
+      const summaryResponse = await session.sendAndWait({
+        prompt:
+          "Summarize our entire conversation concisely. Include key topics, decisions made, tools used, and any ongoing tasks. This summary will be used to continue in a fresh context window.",
+      }, 60000);
+
+      const summary = summaryResponse?.data?.content || "";
+      if (!summary) {
+        return { success: false, error: "Failed to generate summary" };
+      }
+
+      // Destroy old session
+      await session.destroy();
+      this.sessions.delete(sessionId);
+
+      // Create a fresh session primed with the summary
+      const config = loadConfig();
+      this.currentModel = config.model;
+      const newSession = await this.getOrCreateSession(sessionId, config.model);
+
+      await newSession.sendAndWait({
+        prompt: `[Context from compacted conversation]\n\n${summary}\n\nAcknowledge briefly that you have this context.`,
+      }, 30000);
+
+      return { success: true, summary };
+    } catch (error: any) {
+      this.sessions.delete(sessionId);
+      return { success: false, error: error.message };
     }
   }
 

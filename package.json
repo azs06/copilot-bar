@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc && npm run copy-html",
-    "copy-html": "mkdir -p dist/renderer && cp src/renderer/index.html dist/renderer/ && cp -r assets dist/",
+    "copy-html": "mkdir -p dist/renderer && cp src/renderer/index.html src/renderer/osd.html dist/renderer/ && cp -r assets dist/",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron .",
     "test": "vitest run",

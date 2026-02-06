@@ -2,6 +2,7 @@ import initSqlJs, { Database as SqlJsDatabase } from "sql.js";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 
 const CONFIG_DIR = join(homedir(), ".copilot-bar");
 const DB_PATH = join(CONFIG_DIR, "copilot-bar.db");
@@ -58,7 +59,7 @@ function ensureDefaultChatSession(database: SqlJsDatabase): number {
 
   database.run("INSERT INTO chat_sessions (title) VALUES (?)", [formatSessionTitleFromTimestamp()]);
   const id = getSingleNumber(database, "SELECT last_insert_rowid()") || 1;
-  saveDb();
+  markDirty();
   return id;
 }
 
@@ -148,17 +149,50 @@ async function initDb(): Promise<SqlJsDatabase> {
   // Index for session-scoped history queries
   db.run("CREATE INDEX IF NOT EXISTS idx_chat_history_session_id ON chat_history(session_id, id)");
 
-  saveDb();
+  saveDbSync();
   return db;
 }
 
-// Save database to file
-function saveDb(): void {
-  if (db) {
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    writeFileSync(DB_PATH, buffer);
+// ── Persistence ──────────────────────────────────────────────────────
+// Queries run in-memory (fast). Persistence = serialize entire DB + write to disk.
+// We debounce writes so bursts of mutations collapse into a single async flush.
+
+const SAVE_DEBOUNCE_MS = 500;
+let dirty = false;
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Mark the in-memory DB as needing a flush. The actual write happens
+// after SAVE_DEBOUNCE_MS of inactivity, off the main-thread event loop.
+function markDirty(): void {
+  dirty = true;
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    persistDb();
+  }, SAVE_DEBOUNCE_MS);
+}
+
+// Async persist — called by the debounce timer.
+async function persistDb(): Promise<void> {
+  if (!db || !dirty) return;
+  dirty = false;
+  const data = db.export();
+  const buffer = Buffer.from(data);
+  await writeFile(DB_PATH, buffer);
+}
+
+// Synchronous persist — only for init (must complete before app proceeds)
+// and shutdown (must complete before process exits).
+function saveDbSync(): void {
+  if (!db) return;
+  dirty = false;
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
   }
+  const data = db.export();
+  const buffer = Buffer.from(data);
+  writeFileSync(DB_PATH, buffer);
 }
 
 // Synchronous database getter (assumes initDb was called)
@@ -185,7 +219,7 @@ export function setConfig(key: string, value: string): void {
     "INSERT INTO config (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = ?",
     [key, value, value]
   );
-  saveDb();
+  markDirty();
 }
 
 export function getAllConfig(): Record<string, string> {
@@ -238,7 +272,7 @@ export function addChatMessage(role: string, content: string, sessionId?: number
     "UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP, last_message_at = CURRENT_TIMESTAMP WHERE id = ?",
     [sid]
   );
-  saveDb();
+  markDirty();
   return msgId;
 }
 
@@ -264,7 +298,7 @@ export function clearChatHistory(sessionId?: number): void {
   const sid = sessionId ?? getActiveSessionId(database);
   database.run("DELETE FROM chat_history WHERE session_id = ?", [sid]);
   database.run("UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?", [sid]);
-  saveDb();
+  markDirty();
 }
 
 // Chat session functions
@@ -292,7 +326,7 @@ export function createChatSession(title?: string): number {
   const finalTitle = (title && title.trim()) ? title.trim() : formatSessionTitleFromTimestamp();
   database.run("INSERT INTO chat_sessions (title) VALUES (?)", [finalTitle]);
   const id = getSingleNumber(database, "SELECT last_insert_rowid()") || 0;
-  saveDb();
+  markDirty();
   if (id > 0) {
     setConfig("active_session_id", String(id));
   }
@@ -304,7 +338,7 @@ export function renameChatSession(id: number, title: string): void {
   const finalTitle = title.trim();
   if (!finalTitle) return;
   database.run("UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [finalTitle, id]);
-  saveDb();
+  markDirty();
 }
 
 export function deleteChatSession(id: number): { activeSessionId: number } {
@@ -322,7 +356,7 @@ export function deleteChatSession(id: number): { activeSessionId: number } {
     setConfig("active_session_id", String(fallback));
   }
 
-  saveDb();
+  markDirty();
   return { activeSessionId: getActiveSessionId(database) };
 }
 
@@ -359,7 +393,7 @@ export function createNote(content: string): number {
     [content]
   );
   const id = getSingleNumber(database, "SELECT last_insert_rowid()");
-  saveDb();
+  markDirty();
   if (!id || id <= 0) throw new Error("Failed to create note");
   return id;
 }
@@ -370,7 +404,7 @@ export function updateNote(id: number, content: string): boolean {
     "UPDATE notes SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
     [content, id]
   );
-  saveDb();
+  markDirty();
   return true;
 }
 
@@ -426,7 +460,7 @@ export function searchNotes(query: string, limit: number = 20): Note[] {
 export function deleteNote(id: number): boolean {
   const database = getDb();
   database.run("DELETE FROM notes WHERE id = ?", [id]);
-  saveDb();
+  markDirty();
   return true;
 }
 
@@ -438,7 +472,7 @@ export function countNotes(): number {
 export function deleteAllNotes(): void {
   const database = getDb();
   database.run("DELETE FROM notes");
-  saveDb();
+  markDirty();
 }
 
 // Todo functions
@@ -453,7 +487,7 @@ export function createTodo(content: string): number {
   const database = getDb();
   database.run("INSERT INTO todos (content) VALUES (?)", [content]);
   const id = getSingleNumber(database, "SELECT last_insert_rowid()");
-  saveDb();
+  markDirty();
   if (!id || id <= 0) throw new Error("Failed to create todo");
   return id;
 }
@@ -498,20 +532,20 @@ export function getTodo(id: number): TodoItem | null {
 export function completeTodo(id: number): boolean {
   const database = getDb();
   database.run("UPDATE todos SET completed = 1 WHERE id = ?", [id]);
-  saveDb();
+  markDirty();
   return getTodo(id)?.completed === true;
 }
 
 export function deleteTodo(id: number): void {
   const database = getDb();
   database.run("DELETE FROM todos WHERE id = ?", [id]);
-  saveDb();
+  markDirty();
 }
 
-// Close database
+// Close database — flush synchronously since the process is exiting
 export function closeDb(): void {
   if (db) {
-    saveDb();
+    saveDbSync();
     db.close();
     db = null;
   }

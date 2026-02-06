@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      body {
+        background: transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        overflow: hidden;
+        -webkit-app-region: no-drag;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+
+      .osd {
+        width: 180px;
+        height: 180px;
+        border-radius: 18px;
+        background: rgba(40, 40, 40, 0.85);
+        backdrop-filter: blur(30px);
+        -webkit-backdrop-filter: blur(30px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        opacity: 0;
+        transform: scale(0.92);
+        transition: opacity 0.15s ease, transform 0.15s ease;
+      }
+
+      .osd.visible {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      .icon {
+        width: 64px;
+        height: 64px;
+        fill: white;
+        opacity: 0.95;
+      }
+
+      .bar-container {
+        display: flex;
+        gap: 3px;
+        align-items: center;
+        height: 8px;
+      }
+
+      .bar-segment {
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.15);
+        transition: background 0.1s ease;
+      }
+
+      .bar-segment.filled {
+        background: rgba(255, 255, 255, 0.9);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="osd" id="osd">
+      <div id="icon-container"></div>
+      <div class="bar-container" id="bar"></div>
+    </div>
+
+    <script>
+      const { ipcRenderer } = require("electron");
+
+      const SEGMENT_COUNT = 16;
+      const osd = document.getElementById("osd");
+      const iconContainer = document.getElementById("icon-container");
+      const bar = document.getElementById("bar");
+
+      // Build 16 bar segments
+      for (let i = 0; i < SEGMENT_COUNT; i++) {
+        const seg = document.createElement("div");
+        seg.className = "bar-segment";
+        bar.appendChild(seg);
+      }
+
+      const icons = {
+        volume: `<svg class="icon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/><path d="M19 12c0 2.97-1.65 5.54-4 6.71v-2.18c1.3-.93 2.15-2.45 2.15-4.18 0-1.73-.84-3.25-2.15-4.18V6.12C17.53 7.54 19 10.03 19 12z" opacity="0.7"/></svg>`,
+        mute: `<svg class="icon" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63z" opacity="0.4"/><line x1="3" y1="3" x2="21" y2="21" stroke="white" stroke-width="2" stroke-linecap="round"/></svg>`,
+        brightness: `<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>`,
+      };
+
+      ipcRenderer.on("osd-update", (_event, { type, level }) => {
+        // Choose icon
+        iconContainer.innerHTML = icons[type] || icons.volume;
+
+        // Fill bar segments
+        const filled = Math.round((level / 100) * SEGMENT_COUNT);
+        const segments = bar.children;
+        for (let i = 0; i < SEGMENT_COUNT; i++) {
+          segments[i].classList.toggle("filled", i < filled);
+        }
+
+        // Show with animation
+        osd.classList.add("visible");
+      });
+    </script>
+  </body>
+</html>

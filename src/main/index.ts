@@ -175,6 +175,25 @@ app.whenReady().then(async () => {
     return deleteChatSession(id);
   });
 
+  ipcMain.handle("compact-session", async (_event, sessionId?: number) => {
+    try {
+      const sid = typeof sessionId === "number" && sessionId > 0 ? sessionId : getActiveChatSession().id;
+      const history = getChatHistory(sid);
+      const messagesBefore = history.length;
+
+      const result = await copilotService.compactSession(sid);
+
+      if (result.success && result.summary) {
+        clearChatHistory(sid);
+        addChatMessage("assistant", `**Conversation compacted** (${messagesBefore} messages → summary)\n\n${result.summary}`, sid);
+      }
+
+      return { success: true, messagesBefore, summary: result.summary };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Compaction failed" };
+    }
+  });
+
   ipcMain.handle("quit-app", () => {
     app.quit();
   });

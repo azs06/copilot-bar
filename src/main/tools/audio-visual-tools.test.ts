@@ -19,6 +19,10 @@ vi.mock("./native-apis.js", () => ({
   })),
 }));
 
+vi.mock("../osd-window.js", () => ({
+  showOSD: vi.fn(),
+}));
+
 import { audioVisualTools } from "./audio-visual-tools.js";
 
 function findTool(name: string) {
