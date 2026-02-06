@@ -2,8 +2,12 @@
 
 A macOS menu bar app powered by GitHub Copilot SDK. Chat with AI and control your computer from the menu bar.
 
+By default it uses gpt-5-mini, the shared history is intentionally disabled. This is a hobby project. Completely created using Opus and Codex.
 
-By default it uses gpt-5-mini, the shared history is intentionally disabled. This is a hobby project
+Todos:
+
+* Add build porcess for native dependencies (koffi)
+* Improve overall performance
 
 ## Features
 
