@@ -13,7 +13,7 @@ export interface ToolEvent {
 }
 
 export interface WidgetEvent {
-  type: "timer" | "countdown" | "pomodoro" | "worldclock" | "unitconverter" | "wifi";
+  type: "timer" | "countdown" | "pomodoro" | "worldclock" | "unitconverter" | "wifi" | "chart";
   duration?: number;
   label?: string;
   cities?: Array<{ name: string; timezone: string }>;
@@ -24,6 +24,14 @@ export interface WidgetEvent {
   currentNetwork?: string | null;
   savedNetworks?: string[];
   error?: string;
+  // Chart widget properties
+  chartType?: "bar" | "horizontalBar" | "pie" | "doughnut" | "line" | "scatter" | "table";
+  chartTitle?: string;
+  chartLabels?: string[];
+  chartDatasets?: Array<{ label: string; data: number[]; backgroundColor?: string | string[] }>;
+  xLabel?: string;
+  yLabel?: string;
+  scatterData?: Array<{ x: number; y: number }>;
 }
 
 export interface StreamDelta {
@@ -194,6 +202,14 @@ export class CopilotService {
                 currentNetwork: result.currentNetwork ?? null,
                 savedNetworks: result.savedNetworks,
                 error: result.error,
+                // Chart widget properties
+                chartType: result.chartType,
+                chartTitle: result.chartTitle,
+                chartLabels: result.chartLabels,
+                chartDatasets: result.chartDatasets,
+                xLabel: result.xLabel,
+                yLabel: result.yLabel,
+                scatterData: result.scatterData,
               });
             }
             if (this.onScreenshotEvent && toolName === "capture_screenshot" && result.success) {

@@ -53,6 +53,13 @@ Keep responses concise and friendly — you're a quick-access assistant, not a f
 - Extract information from documents
 - Summarize documents or find specific information
 
+### 📊 Data Visualization & Charts
+- Attach CSV or Excel files for data analysis
+- Generate interactive charts: bar, horizontal bar, pie, doughnut, line, scatter
+- First analyze the data file with analyze_data_file, then render charts with render_chart
+- Automatic chart type suggestions based on data structure
+- Fallback to markdown tables for tabular data display
+
 ### 🌐 Web & Code
 - Summarize any web page by URL
 - Get current weather for any city

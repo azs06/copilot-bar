@@ -17,6 +17,8 @@ Todos:
 - **Chat History** - Conversations persist across sessions (SQLite)
 - **Chat Sessions** - Multiple independent conversations
 - **Screenshot Analysis** - Capture screen and ask AI about what's visible
+- **Document Analysis** - Attach and analyze PDFs, images, and text files
+- **Data Visualization** - Generate charts from CSV and Excel files
 - **Image Analysis** - Extract metadata and dimensions from images
 - **URL Summarizer** - Fetch and summarize any web page
 - **Code Runner** - Execute Python or JavaScript snippets
@@ -60,6 +62,13 @@ Additional system controls:
 ### Reminders
 - **Native Notifications** - Set reminders that trigger macOS notifications
 - **List & Cancel** - View active reminders and cancel them
+
+### Data Visualization
+- **CSV/Excel Parsing** - Upload data files for analysis
+- **Interactive Charts** - Bar, horizontal bar, pie, doughnut, line, and scatter charts
+- **Automatic Type Detection** - Column analysis with numeric stats
+- **Theme-Aware** - Charts adapt to light/dark mode
+- **Table Fallback** - Data displays as tables if chart rendering fails
 
 ### Voice
 - **Speech-to-Text** - Activate macOS dictation
@@ -119,6 +128,9 @@ Access settings via the gear button in the app to configure:
 "Take a screenshot"          "What's the weather in NYC?"
 "Play next song"             "Create a note about..."
 "Run this Python: ..."       "Summarize this URL: ..."
+"Analyze this document"      "What file types are supported?"
+"Show me a bar chart"        "Plot this data as a pie chart"
+"Visualize sales by month"   "Make a scatter plot"
 ```
 
 ## Custom Tools
@@ -155,6 +167,26 @@ Access settings via the gear button in the app to configure:
 | `arrange_windows` | Split, cascade, maximize, minimize/restore |
 | `focus_window` | Bring an app to the front |
 | `close_window` | Close an app's window |
+
+### Document Analysis
+
+| Tool | Description |
+|------|-------------|
+| `attach_document` | Open file picker to attach PDFs, images, or text files (up to 10MB) |
+| `list_supported_formats` | Show supported document formats and size limits |
+
+Supported formats:
+- **PDFs** - Document analysis via vision
+- **Images** - PNG, JPG, JPEG for image analysis
+- **Text** - TXT, MD, JSON, CSV for text processing
+- **Spreadsheets** - XLSX, XLS for data analysis and charts
+
+### Data Visualization
+
+| Tool | Description |
+|------|-------------|
+| `analyze_data_file` | Parse CSV/Excel and return column types, stats, and chart suggestions |
+| `render_chart` | Generate interactive charts (bar, pie, line, scatter, table) |
 
 ### Productivity
 
@@ -214,6 +246,8 @@ All data is stored locally in SQLite:
 - **koffi** - FFI for native macOS framework calls (CoreAudio, DisplayServices, IOBluetooth, CoreGraphics)
 - **sql.js** - SQLite for persistence
 - **marked** + **highlight.js** - Markdown rendering
+- **Chart.js** - Interactive data visualization
+- **papaparse** + **xlsx** - CSV and Excel parsing
 - **TypeScript** - Type safety
 
 ## Development
@@ -237,6 +271,9 @@ npm start        # Build and run
 | [sql.js](https://github.com/sql-js/sql.js) | sql.js contributors | MIT | In-browser SQLite for persistence |
 | [marked](https://github.com/markedjs/marked) | Christopher Jeffrey & contributors | MIT | Markdown to HTML rendering |
 | [highlight.js](https://highlightjs.org/) | Ivan Sagalaev & contributors | BSD-3-Clause | Syntax highlighting in code blocks |
+| [Chart.js](https://www.chartjs.org/) | Chart.js Contributors | MIT | Interactive data visualization |
+| [papaparse](https://www.papaparse.com/) | Matthew Holt | MIT | CSV parsing |
+| [xlsx](https://sheetjs.com/) | SheetJS LLC | Apache-2.0 | Excel file parsing |
 | [@aws-sdk/client-s3](https://github.com/aws/aws-sdk-js-v3) | Amazon Web Services | Apache-2.0 | S3 upload for screenshots (optional) |
 | [dotenv](https://github.com/motdotla/dotenv) | Scott Motte | BSD-2-Clause | Environment variable loading |
 | [TypeScript](https://www.typescriptlang.org/) | Microsoft | Apache-2.0 | Type-safe development |

@@ -953,6 +953,67 @@
         font-size: 14px;
       }
 
+      /* Chart Widget */
+      .chart-widget {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 16px;
+        margin: 8px 0;
+        max-width: 360px;
+      }
+
+      .chart-widget-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 12px;
+        text-align: center;
+      }
+
+      .chart-widget-canvas-container {
+        position: relative;
+        height: 250px;
+        width: 100%;
+      }
+
+      .chart-widget-fallback {
+        font-size: 11px;
+        color: var(--text-muted);
+        text-align: center;
+        padding: 20px;
+        background: var(--code-bg);
+        border-radius: 8px;
+      }
+
+      .chart-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        margin-top: 8px;
+      }
+
+      .chart-table th,
+      .chart-table td {
+        padding: 8px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .chart-table th {
+        background: var(--bg-tertiary);
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .chart-table td {
+        color: var(--text-secondary);
+      }
+
+      .chart-table tr:hover td {
+        background: var(--bg-tertiary);
+      }
+
       /* Settings Panel */
       .settings-overlay {
         position: fixed;
@@ -1388,7 +1449,29 @@
             .replace(/\n/g, "<br>"),
       };
       let hljs = null;
+      let Chart = null;
       let markdownInitPromise = null;
+      let chartInitPromise = null;
+
+      async function initChartJs() {
+        if (Chart) return Chart;
+        if (chartInitPromise) return chartInitPromise;
+
+        chartInitPromise = (async () => {
+          try {
+            const { pathToFileURL } = require("node:url");
+            const chartPath = require.resolve("chart.js");
+            const chartModule = await import(pathToFileURL(chartPath).href);
+            Chart = chartModule.Chart || chartModule.default || chartModule;
+            return Chart;
+          } catch (e) {
+            console.warn("[Chart] Failed to load Chart.js:", e);
+            return null;
+          }
+        })();
+
+        return chartInitPromise;
+      }
 
       async function initMarkdown() {
         try {
@@ -2899,6 +2982,180 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         return widget;
       }
 
+      // Chart Widget
+      async function createChartWidget(data) {
+        const widget = document.createElement("div");
+        widget.className = "chart-widget";
+
+        // Title
+        if (data.chartTitle) {
+          const title = document.createElement("div");
+          title.className = "chart-widget-title";
+          title.textContent = data.chartTitle;
+          widget.appendChild(title);
+        }
+
+        // Handle table type separately (no Chart.js needed)
+        if (data.chartType === "table") {
+          const table = document.createElement("table");
+          table.className = "chart-table";
+
+          // Header row
+          const thead = document.createElement("thead");
+          const headerRow = document.createElement("tr");
+          headerRow.innerHTML = `<th>Label</th>${(data.chartDatasets || []).map(ds => `<th>${ds.label}</th>`).join("")}`;
+          thead.appendChild(headerRow);
+          table.appendChild(thead);
+
+          // Data rows
+          const tbody = document.createElement("tbody");
+          (data.chartLabels || []).forEach((label, i) => {
+            const row = document.createElement("tr");
+            row.innerHTML = `<td>${label}</td>${(data.chartDatasets || []).map(ds => `<td>${ds.data[i]}</td>`).join("")}`;
+            tbody.appendChild(row);
+          });
+          table.appendChild(tbody);
+
+          widget.appendChild(table);
+          return widget;
+        }
+
+        // Try to use Chart.js for charts
+        const chartLib = await initChartJs();
+
+        if (!chartLib) {
+          // Fallback to table if Chart.js unavailable
+          const fallback = document.createElement("div");
+          fallback.className = "chart-widget-fallback";
+          fallback.innerHTML = `<p>Chart rendering unavailable. Showing data as table:</p>`;
+
+          const table = document.createElement("table");
+          table.className = "chart-table";
+
+          const thead = document.createElement("thead");
+          const headerRow = document.createElement("tr");
+          headerRow.innerHTML = `<th>Label</th>${(data.chartDatasets || []).map(ds => `<th>${ds.label}</th>`).join("")}`;
+          thead.appendChild(headerRow);
+          table.appendChild(thead);
+
+          const tbody = document.createElement("tbody");
+          (data.chartLabels || []).forEach((label, i) => {
+            const row = document.createElement("tr");
+            row.innerHTML = `<td>${label}</td>${(data.chartDatasets || []).map(ds => `<td>${ds.data[i]}</td>`).join("")}`;
+            tbody.appendChild(row);
+          });
+          table.appendChild(tbody);
+
+          fallback.appendChild(table);
+          widget.appendChild(fallback);
+          return widget;
+        }
+
+        // Create canvas container
+        const canvasContainer = document.createElement("div");
+        canvasContainer.className = "chart-widget-canvas-container";
+
+        const canvas = document.createElement("canvas");
+        canvas.id = `chart-${Date.now()}`;
+        canvasContainer.appendChild(canvas);
+        widget.appendChild(canvasContainer);
+
+        // Detect theme for chart colors
+        const isDark = !document.documentElement.hasAttribute("data-theme") ||
+                       document.documentElement.getAttribute("data-theme") !== "light";
+
+        const textColor = isDark ? "#e0e0e0" : "#1a1a1a";
+        const gridColor = isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)";
+
+        // Build chart configuration
+        let chartConfig;
+
+        if (data.chartType === "scatter") {
+          chartConfig = {
+            type: "scatter",
+            data: {
+              datasets: [{
+                label: data.chartTitle || "Scatter",
+                data: data.scatterData || [],
+                backgroundColor: "rgba(0, 102, 255, 0.6)",
+              }],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+              },
+              scales: {
+                x: {
+                  title: { display: !!data.xLabel, text: data.xLabel || "", color: textColor },
+                  ticks: { color: textColor },
+                  grid: { color: gridColor },
+                },
+                y: {
+                  title: { display: !!data.yLabel, text: data.yLabel || "", color: textColor },
+                  ticks: { color: textColor },
+                  grid: { color: gridColor },
+                },
+              },
+            },
+          };
+        } else {
+          // Determine chart type for Chart.js
+          let jsChartType = data.chartType;
+          if (data.chartType === "horizontalBar") {
+            jsChartType = "bar";
+          }
+
+          chartConfig = {
+            type: jsChartType,
+            data: {
+              labels: data.chartLabels || [],
+              datasets: (data.chartDatasets || []).map((ds, idx) => ({
+                label: ds.label,
+                data: ds.data,
+                backgroundColor: ds.backgroundColor,
+                borderColor: isDark ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.2)",
+                borderWidth: 1,
+              })),
+            },
+            options: {
+              indexAxis: data.chartType === "horizontalBar" ? "y" : "x",
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  display: (data.chartDatasets || []).length > 1,
+                  labels: { color: textColor },
+                },
+              },
+              scales: data.chartType === "pie" || data.chartType === "doughnut" ? {} : {
+                x: {
+                  ticks: { color: textColor },
+                  grid: { color: gridColor },
+                  title: { display: !!data.xLabel, text: data.xLabel || "", color: textColor },
+                },
+                y: {
+                  ticks: { color: textColor },
+                  grid: { color: gridColor },
+                  title: { display: !!data.yLabel, text: data.yLabel || "", color: textColor },
+                },
+              },
+            },
+          };
+        }
+
+        // Create chart
+        try {
+          new chartLib(canvas.getContext("2d"), chartConfig);
+        } catch (e) {
+          console.error("[Chart] Failed to create chart:", e);
+          widget.innerHTML = `<div class="chart-widget-fallback">Failed to render chart: ${e.message}</div>`;
+        }
+
+        return widget;
+      }
+
       // WiFi Widget
       function createWifiWidget(data) {
         const widget = document.createElement("div");
@@ -3008,6 +3265,14 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
           case "wifi":
             widget = createWifiWidget(data);
             break;
+          case "chart":
+            createChartWidget(data).then(w => {
+              if (w) {
+                chatContainer.appendChild(w);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+              }
+            });
+            return; // Return early since we handle append in the promise
         }
 
         if (widget) {

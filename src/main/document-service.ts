@@ -14,6 +14,8 @@ const ALLOWED_EXTENSIONS = [
   ".markdown",
   ".json",
   ".csv",
+  ".xlsx",
+  ".xls",
 ];
 
 const ALLOWED_MIME_TYPES = [
@@ -25,6 +27,8 @@ const ALLOWED_MIME_TYPES = [
   "text/markdown",
   "application/json",
   "text/csv",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
 ];
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -73,6 +77,11 @@ export async function validateDocument(filePath: string): Promise<{ valid: boole
     } else if ([".png", ".jpg", ".jpeg"].includes(ext)) {
       type = "image";
       mimeType = ext === ".png" ? "image/png" : "image/jpeg";
+    } else if ([".xlsx", ".xls"].includes(ext)) {
+      type = "text"; // Treat Excel as text for analysis purposes
+      mimeType = ext === ".xlsx"
+        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        : "application/vnd.ms-excel";
     } else {
       type = "text";
       mimeType = ext === ".json" ? "application/json" :
@@ -113,7 +122,7 @@ export async function selectAndPrepareDocument(): Promise<{
       title: "Select a document to analyze",
       properties: ["openFile"],
       filters: [
-        { name: "Documents", extensions: ["pdf", "png", "jpg", "jpeg", "txt", "md", "json", "csv"] },
+        { name: "Documents", extensions: ["pdf", "png", "jpg", "jpeg", "txt", "md", "json", "csv", "xlsx", "xls"] },
         { name: "All Files", extensions: ["*"] },
       ],
     });
@@ -173,5 +182,6 @@ export function listSupportedFormats(): Array<{ name: string; extensions: string
     { name: "PDF", extensions: ["pdf"], description: "PDF documents for vision analysis" },
     { name: "Images", extensions: ["png", "jpg", "jpeg"], description: "Image files for vision analysis" },
     { name: "Text", extensions: ["txt", "md", "json", "csv"], description: "Plain text and structured data files" },
+    { name: "Excel", extensions: ["xlsx", "xls"], description: "Excel spreadsheets for data analysis and charts" },
   ];
 }

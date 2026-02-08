@@ -7,6 +7,7 @@ import { mediaTools } from "./media-tools.js";
 import { webTools } from "./web-tools.js";
 import { widgetTools } from "./widget-tools.js";
 import { documentTools } from "./document-tools.js";
+import { chartTools } from "./chart-tools.js";
 
 export const allTools = [
   ...audioVisualTools,
@@ -18,4 +19,5 @@ export const allTools = [
   ...webTools,
   ...widgetTools,
   ...documentTools,
+  ...chartTools,
 ];
