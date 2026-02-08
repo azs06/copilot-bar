@@ -6,6 +6,7 @@ import { dataTools } from "./data-tools.js";
 import { mediaTools } from "./media-tools.js";
 import { webTools } from "./web-tools.js";
 import { widgetTools } from "./widget-tools.js";
+import { documentTools } from "./document-tools.js";
 
 export const allTools = [
   ...audioVisualTools,
@@ -16,4 +17,5 @@ export const allTools = [
   ...mediaTools,
   ...webTools,
   ...widgetTools,
+  ...documentTools,
 ];

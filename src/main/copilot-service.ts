@@ -55,6 +55,7 @@ export class CopilotService {
   private onScreenshotEvent: ((event: ScreenshotEvent) => void) | null = null;
   private onModelUsage: ((event: ModelUsageEvent) => void) | null = null;
   private activeTools: Map<string, string> = new Map(); // toolCallId -> toolName
+  private pendingDocument: { type: "file"; path: string; displayName: string } | null = null;
 
   setToolEventHandler(handler: (event: ToolEvent) => void) {
     this.onToolEvent = handler;
@@ -74,6 +75,14 @@ export class CopilotService {
 
   setModelUsageHandler(handler: (event: ModelUsageEvent) => void) {
     this.onModelUsage = handler;
+  }
+
+  setPendingAttachment(attachment: { path: string; name: string; type: string }) {
+    this.pendingDocument = {
+      type: "file",
+      path: attachment.path,
+      displayName: attachment.name,
+    };
   }
 
   async initialize(): Promise<void> {
@@ -222,13 +231,20 @@ export class CopilotService {
     // Build message options with optional screenshot attachment for vision
     const messageOptions: { prompt: string; attachments?: Array<{ type: "file"; path: string; displayName?: string }> } = { prompt };
 
-    const screenshotPath = getLastScreenshot();
-    if (screenshotPath) {
-      messageOptions.attachments = [
-        { type: "file", path: screenshotPath, displayName: "screenshot.png" }
-      ];
-      // Clear the screenshot after attaching so it's not sent repeatedly
-      clearLastScreenshot();
+    // Check for pending document attachment first (takes priority over screenshots)
+    if (this.pendingDocument) {
+      messageOptions.attachments = [this.pendingDocument];
+      this.pendingDocument = null;
+    } else {
+      // Existing screenshot logic
+      const screenshotPath = getLastScreenshot();
+      if (screenshotPath) {
+        messageOptions.attachments = [
+          { type: "file", path: screenshotPath, displayName: "screenshot.png" }
+        ];
+        // Clear the screenshot after attaching so it's not sent repeatedly
+        clearLastScreenshot();
+      }
     }
 
     console.log("[chat] sending prompt:", prompt.substring(0, 80));

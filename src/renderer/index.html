@@ -597,6 +597,54 @@
         object-fit: contain;
       }
 
+      /* Document attachment preview */
+      .document-preview {
+        margin: 8px 0;
+        padding: 12px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .document-preview-icon {
+        font-size: 24px;
+        flex-shrink: 0;
+      }
+
+      .document-preview-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .document-preview-name {
+        font-size: 13px;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .document-preview-meta {
+        font-size: 11px;
+        color: var(--text-secondary);
+      }
+
+      .document-preview-remove {
+        background: none;
+        border: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        font-size: 16px;
+        padding: 4px;
+      }
+
+      .document-preview-remove:hover {
+        color: var(--error-text);
+      }
+
       .tool-activity {
         font-size: 11px;
         color: var(--tool-text);
@@ -1284,6 +1332,7 @@
         </div>
         <div class="header-actions">
           <button class="config-btn" id="screenshotBtn" title="Capture screenshot">📷</button>
+          <button class="config-btn" id="documentBtn" title="Attach document">📎</button>
           <button class="config-btn" id="clearBtn" title="Clear chat">🗑️</button>
           <button class="config-btn" id="configBtn" title="Settings">⚙️</button>
           <button class="config-btn" id="quitBtn" title="Quit app">✕</button>
@@ -1313,6 +1362,7 @@
     </div>
 
     <div class="input-area">
+      <div class="attachment-area" id="attachmentArea" style="display: none;"></div>
       <div class="input-stack">
         <textarea
           id="input"
@@ -2005,7 +2055,8 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
 
       async function sendMessage() {
         const prompt = input.value.trim();
-        if (!prompt || isLoading) return;
+        if (!prompt && !pendingDocument) return;
+        if (isLoading) return;
 
         // Always hide slash command hint on send
         renderCommandHint([]);
@@ -2035,8 +2086,21 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
 
         showTypingIndicator();
 
+        // Prepare message data with optional attachment
+        const messageData = { prompt };
+
+        if (pendingDocument) {
+          messageData.attachment = pendingDocument;
+          // If no prompt, use a default one
+          if (!prompt) {
+            messageData.prompt = `Analyze this ${pendingDocument.type} document`;
+          }
+          // Clear attachment after including it
+          clearAttachment();
+        }
+
         try {
-          const result = await ipcRenderer.invoke("chat", prompt, activeSession.id || undefined);
+          const result = await ipcRenderer.invoke("chat", messageData.prompt, activeSession.id || undefined, messageData.attachment);
           hideTypingIndicator();
 
           if (result.success) {
@@ -2316,6 +2380,67 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
           addMessage(`Screenshot error: ${err.message || "Unknown error"}`, "error");
         }
       });
+
+      // Document attachment
+      let pendingDocument = null;
+
+      documentBtn.addEventListener("click", async () => {
+        try {
+          const result = await ipcRenderer.invoke("select-document");
+          if (result.success) {
+            pendingDocument = result.document;
+            renderAttachmentPreview(pendingDocument);
+            input.focus();
+          } else if (result.error) {
+            addMessage(`Document selection failed: ${result.error}`, "error");
+          }
+        } catch (err) {
+          addMessage(`Document error: ${err.message || "Unknown error"}`, "error");
+        }
+      });
+
+      function renderAttachmentPreview(doc) {
+        const area = document.getElementById("attachmentArea");
+        area.style.display = "block";
+        area.innerHTML = `
+          <div class="document-preview">
+            <div class="document-preview-icon">${getFileIcon(doc.type)}</div>
+            <div class="document-preview-info">
+              <div class="document-preview-name">${escapeHtml(doc.name)}</div>
+              <div class="document-preview-meta">${formatFileSize(doc.size)} • ${doc.type}</div>
+            </div>
+            <button class="document-preview-remove" onclick="clearAttachment()">×</button>
+          </div>
+        `;
+      }
+
+      function clearAttachment() {
+        pendingDocument = null;
+        const area = document.getElementById("attachmentArea");
+        area.style.display = "none";
+        area.innerHTML = "";
+        input.focus();
+      }
+
+      function getFileIcon(type) {
+        const icons = { pdf: "📄", image: "🖼️", text: "📝", default: "📎" };
+        return icons[type] || icons.default;
+      }
+
+      function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+        return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      // Make clearAttachment available globally
+      window.clearAttachment = clearAttachment;
 
       // Listen for tool events from main process
       ipcRenderer.on("tool-event", (event, data) => {

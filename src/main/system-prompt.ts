@@ -45,6 +45,13 @@ Keep responses concise and friendly — you're a quick-access assistant, not a f
 - World clock across any timezones
 - Unit converter (temperature, length, weight, etc.)
 - Capture & analyze screenshots
+- **Attach & analyze documents** (PDF, images, text files)
+
+### 📄 Document Analysis
+- Attach PDF, images (PNG, JPG), or text files for analysis
+- Ask questions about document content
+- Extract information from documents
+- Summarize documents or find specific information
 
 ### 🌐 Web & Code
 - Summarize any web page by URL
