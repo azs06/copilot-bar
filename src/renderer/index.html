@@ -313,15 +313,24 @@
         border-collapse: collapse;
         margin: 8px 0;
         font-size: 12px;
+        width: 100%;
+        display: block;
+        overflow-x: auto;
       }
 
       .message.assistant th,
       .message.assistant td {
         border: 1px solid var(--border-color);
         padding: 6px 10px;
+        white-space: nowrap;
       }
 
       .message.assistant th {
+        background: var(--bg-tertiary);
+        font-weight: 600;
+      }
+
+      .message.assistant tr:hover td {
         background: var(--bg-tertiary);
       }
 
@@ -384,9 +393,16 @@
         font-size: 13px;
       }
 
-      .input-area {
-        padding: 12px 16px;
+      .input-wrapper {
         border-top: 1px solid var(--border-color);
+        padding: 12px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .input-area {
         display: flex;
         gap: 8px;
         align-items: flex-end;
@@ -595,6 +611,56 @@
         max-height: 95%;
         border-radius: 4px;
         object-fit: contain;
+      }
+
+      /* Document attachment preview */
+      .document-preview {
+        margin: 0;
+        padding: 8px 10px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        max-width: 100%;
+        overflow: hidden;
+      }
+
+      .document-preview-icon {
+        font-size: 18px;
+        flex-shrink: 0;
+      }
+
+      .document-preview-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .document-preview-name {
+        font-size: 12px;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .document-preview-meta {
+        font-size: 10px;
+        color: var(--text-secondary);
+      }
+
+      .document-preview-remove {
+        background: none;
+        border: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        font-size: 16px;
+        padding: 4px;
+      }
+
+      .document-preview-remove:hover {
+        color: var(--error-text);
       }
 
       .tool-activity {
@@ -903,6 +969,67 @@
 
       .wifi-network-icon {
         font-size: 14px;
+      }
+
+      /* Chart Widget */
+      .chart-widget {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 16px;
+        margin: 8px 0;
+        max-width: 360px;
+      }
+
+      .chart-widget-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 12px;
+        text-align: center;
+      }
+
+      .chart-widget-canvas-container {
+        position: relative;
+        height: 250px;
+        width: 100%;
+      }
+
+      .chart-widget-fallback {
+        font-size: 11px;
+        color: var(--text-muted);
+        text-align: center;
+        padding: 20px;
+        background: var(--code-bg);
+        border-radius: 8px;
+      }
+
+      .chart-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        margin-top: 8px;
+      }
+
+      .chart-table th,
+      .chart-table td {
+        padding: 8px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--border-color);
+      }
+
+      .chart-table th {
+        background: var(--bg-tertiary);
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .chart-table td {
+        color: var(--text-secondary);
+      }
+
+      .chart-table tr:hover td {
+        background: var(--bg-tertiary);
       }
 
       /* Settings Panel */
@@ -1284,6 +1411,7 @@
         </div>
         <div class="header-actions">
           <button class="config-btn" id="screenshotBtn" title="Capture screenshot">📷</button>
+          <button class="config-btn" id="documentBtn" title="Attach document">📎</button>
           <button class="config-btn" id="clearBtn" title="Clear chat">🗑️</button>
           <button class="config-btn" id="configBtn" title="Settings">⚙️</button>
           <button class="config-btn" id="quitBtn" title="Quit app">✕</button>
@@ -1312,17 +1440,20 @@
       </div>
     </div>
 
-    <div class="input-area">
-      <div class="input-stack">
-        <textarea
-          id="input"
-          placeholder="Ask Copilot... (try /help)"
-          rows="1"
-          autofocus
-        ></textarea>
-        <div class="command-hint" id="commandHint"></div>
+    <div class="input-wrapper">
+      <div class="attachment-area" id="attachmentArea" style="display: none;"></div>
+      <div class="input-area">
+        <div class="input-stack">
+          <textarea
+            id="input"
+            placeholder="Ask Copilot... (try /help)"
+            rows="1"
+            autofocus
+          ></textarea>
+          <div class="command-hint" id="commandHint"></div>
+        </div>
+        <button class="send-btn" id="sendBtn" disabled>Send</button>
       </div>
-      <button class="send-btn" id="sendBtn">Send</button>
     </div>
 
     <script>
@@ -1338,7 +1469,29 @@
             .replace(/\n/g, "<br>"),
       };
       let hljs = null;
+      let Chart = null;
       let markdownInitPromise = null;
+      let chartInitPromise = null;
+
+      async function initChartJs() {
+        if (Chart) return Chart;
+        if (chartInitPromise) return chartInitPromise;
+
+        chartInitPromise = (async () => {
+          try {
+            const { pathToFileURL } = require("node:url");
+            const chartPath = require.resolve("chart.js");
+            const chartModule = await import(pathToFileURL(chartPath).href);
+            Chart = chartModule.Chart || chartModule.default || chartModule;
+            return Chart;
+          } catch (e) {
+            console.warn("[Chart] Failed to load Chart.js:", e);
+            return null;
+          }
+        })();
+
+        return chartInitPromise;
+      }
 
       async function initMarkdown() {
         try {
@@ -1520,7 +1673,7 @@
         await loadChatHistory();
 
         input.disabled = false;
-        sendBtn.disabled = false;
+        updateSendBtn();
         input.focus();
       }
 
@@ -2005,7 +2158,8 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
 
       async function sendMessage() {
         const prompt = input.value.trim();
-        if (!prompt || isLoading) return;
+        if (!prompt) return;
+        if (isLoading) return;
 
         // Always hide slash command hint on send
         renderCommandHint([]);
@@ -2035,8 +2189,21 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
 
         showTypingIndicator();
 
+        // Prepare message data with optional attachment
+        const messageData = { prompt };
+
+        if (pendingDocument) {
+          messageData.attachment = pendingDocument;
+          // If no prompt, use a default one
+          if (!prompt) {
+            messageData.prompt = `Analyze this ${pendingDocument.type} document`;
+          }
+          // Clear attachment after including it
+          clearAttachment();
+        }
+
         try {
-          const result = await ipcRenderer.invoke("chat", prompt, activeSession.id || undefined);
+          const result = await ipcRenderer.invoke("chat", messageData.prompt, activeSession.id || undefined, messageData.attachment);
           hideTypingIndicator();
 
           if (result.success) {
@@ -2072,8 +2239,8 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
           streamingMessageId = null;
           streamedContent = "";
           isLoading = false;
-          sendBtn.disabled = false;
           sendBtn.textContent = "Send";
+          updateSendBtn();
           input.focus();
         }
       }
@@ -2104,11 +2271,18 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         }
       });
 
-      // Auto-resize textarea
+      // Auto-resize textarea + toggle send button
+      function updateSendBtn() {
+        if (!isLoading) {
+          sendBtn.disabled = !input.value.trim();
+        }
+      }
+
       input.addEventListener("input", () => {
         input.style.height = "auto";
         input.style.height = Math.min(input.scrollHeight, 120) + "px";
         updateCommandHint();
+        updateSendBtn();
       });
 
       // Hide hint when focus is lost
@@ -2316,6 +2490,67 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
           addMessage(`Screenshot error: ${err.message || "Unknown error"}`, "error");
         }
       });
+
+      // Document attachment
+      let pendingDocument = null;
+
+      documentBtn.addEventListener("click", async () => {
+        try {
+          const result = await ipcRenderer.invoke("select-document");
+          if (result.success) {
+            pendingDocument = result.document;
+            renderAttachmentPreview(pendingDocument);
+            input.focus();
+          } else if (result.error) {
+            addMessage(`Document selection failed: ${result.error}`, "error");
+          }
+        } catch (err) {
+          addMessage(`Document error: ${err.message || "Unknown error"}`, "error");
+        }
+      });
+
+      function renderAttachmentPreview(doc) {
+        const area = document.getElementById("attachmentArea");
+        area.style.display = "block";
+        area.innerHTML = `
+          <div class="document-preview">
+            <div class="document-preview-icon">${getFileIcon(doc.type)}</div>
+            <div class="document-preview-info">
+              <div class="document-preview-name">${escapeHtml(doc.name)}</div>
+              <div class="document-preview-meta">${formatFileSize(doc.size)} • ${doc.type}</div>
+            </div>
+            <button class="document-preview-remove" onclick="clearAttachment()">×</button>
+          </div>
+        `;
+      }
+
+      function clearAttachment() {
+        pendingDocument = null;
+        const area = document.getElementById("attachmentArea");
+        area.style.display = "none";
+        area.innerHTML = "";
+        input.focus();
+      }
+
+      function getFileIcon(type) {
+        const icons = { pdf: "📄", image: "🖼️", text: "📝", default: "📎" };
+        return icons[type] || icons.default;
+      }
+
+      function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+        return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+      }
+
+      function escapeHtml(text) {
+        const div = document.createElement("div");
+        div.textContent = text;
+        return div.innerHTML;
+      }
+
+      // Make clearAttachment available globally
+      window.clearAttachment = clearAttachment;
 
       // Listen for tool events from main process
       ipcRenderer.on("tool-event", (event, data) => {
@@ -2774,6 +3009,184 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         return widget;
       }
 
+      // Build a safe <table> from chart labels + datasets (no innerHTML with user data)
+      function buildChartTable(labels, datasets) {
+        const table = document.createElement("table");
+        table.className = "chart-table";
+
+        const thead = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        const labelTh = document.createElement("th");
+        labelTh.textContent = "Label";
+        headerRow.appendChild(labelTh);
+        for (const ds of datasets) {
+          const th = document.createElement("th");
+          th.textContent = ds.label;
+          headerRow.appendChild(th);
+        }
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement("tbody");
+        for (let i = 0; i < labels.length; i++) {
+          const row = document.createElement("tr");
+          const labelTd = document.createElement("td");
+          labelTd.textContent = labels[i];
+          row.appendChild(labelTd);
+          for (const ds of datasets) {
+            const td = document.createElement("td");
+            td.textContent = String(ds.data[i] ?? "");
+            row.appendChild(td);
+          }
+          tbody.appendChild(row);
+        }
+        table.appendChild(tbody);
+        return table;
+      }
+
+      // Chart Widget
+      async function createChartWidget(data) {
+        const widget = document.createElement("div");
+        widget.className = "chart-widget";
+
+        // Title
+        if (data.chartTitle) {
+          const title = document.createElement("div");
+          title.className = "chart-widget-title";
+          title.textContent = data.chartTitle;
+          widget.appendChild(title);
+        }
+
+        const labels = data.chartLabels || [];
+        const datasets = data.chartDatasets || [];
+
+        // Handle table type separately (no Chart.js needed)
+        if (data.chartType === "table") {
+          widget.appendChild(buildChartTable(labels, datasets));
+          return widget;
+        }
+
+        // Try to use Chart.js for charts
+        const chartLib = await initChartJs();
+
+        if (!chartLib) {
+          // Fallback to table if Chart.js unavailable
+          const fallback = document.createElement("div");
+          fallback.className = "chart-widget-fallback";
+          fallback.textContent = "Chart rendering unavailable. Showing data as table:";
+          fallback.appendChild(buildChartTable(labels, datasets));
+          widget.appendChild(fallback);
+          return widget;
+        }
+
+        // Create canvas container
+        const canvasContainer = document.createElement("div");
+        canvasContainer.className = "chart-widget-canvas-container";
+
+        const canvas = document.createElement("canvas");
+        canvas.id = `chart-${Date.now()}`;
+        canvasContainer.appendChild(canvas);
+        widget.appendChild(canvasContainer);
+
+        // Detect theme for chart colors
+        const isDark = !document.documentElement.hasAttribute("data-theme") ||
+                       document.documentElement.getAttribute("data-theme") !== "light";
+
+        const textColor = isDark ? "#e0e0e0" : "#1a1a1a";
+        const gridColor = isDark ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)";
+
+        // Build chart configuration
+        let chartConfig;
+
+        if (data.chartType === "scatter") {
+          chartConfig = {
+            type: "scatter",
+            data: {
+              datasets: [{
+                label: data.chartTitle || "Scatter",
+                data: data.scatterData || [],
+                backgroundColor: "rgba(0, 102, 255, 0.6)",
+              }],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+              },
+              scales: {
+                x: {
+                  title: { display: !!data.xLabel, text: data.xLabel || "", color: textColor },
+                  ticks: { color: textColor },
+                  grid: { color: gridColor },
+                },
+                y: {
+                  title: { display: !!data.yLabel, text: data.yLabel || "", color: textColor },
+                  ticks: { color: textColor },
+                  grid: { color: gridColor },
+                },
+              },
+            },
+          };
+        } else {
+          // Determine chart type for Chart.js
+          let jsChartType = data.chartType;
+          if (data.chartType === "horizontalBar") {
+            jsChartType = "bar";
+          }
+
+          chartConfig = {
+            type: jsChartType,
+            data: {
+              labels: data.chartLabels || [],
+              datasets: (data.chartDatasets || []).map((ds, idx) => ({
+                label: ds.label,
+                data: ds.data,
+                backgroundColor: ds.backgroundColor,
+                borderColor: isDark ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.2)",
+                borderWidth: 1,
+              })),
+            },
+            options: {
+              indexAxis: data.chartType === "horizontalBar" ? "y" : "x",
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  display: (data.chartDatasets || []).length > 1,
+                  labels: { color: textColor },
+                },
+              },
+              scales: data.chartType === "pie" || data.chartType === "doughnut" ? {} : {
+                x: {
+                  ticks: { color: textColor },
+                  grid: { color: gridColor },
+                  title: { display: !!data.xLabel, text: data.xLabel || "", color: textColor },
+                },
+                y: {
+                  ticks: { color: textColor },
+                  grid: { color: gridColor },
+                  title: { display: !!data.yLabel, text: data.yLabel || "", color: textColor },
+                },
+              },
+            },
+          };
+        }
+
+        // Create chart
+        try {
+          new chartLib(canvas.getContext("2d"), chartConfig);
+        } catch (e) {
+          console.error("[Chart] Failed to create chart:", e);
+          const errDiv = document.createElement("div");
+          errDiv.className = "chart-widget-fallback";
+          errDiv.textContent = `Failed to render chart: ${e.message}`;
+          widget.replaceChildren(errDiv);
+        }
+
+        return widget;
+      }
+
       // WiFi Widget
       function createWifiWidget(data) {
         const widget = document.createElement("div");
@@ -2860,8 +3273,8 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         // Widget is the response - clear loading state
         hideTypingIndicator();
         isLoading = false;
-        sendBtn.disabled = false;
         sendBtn.textContent = "Send";
+        updateSendBtn();
 
         let widget;
         switch (data.type) {
@@ -2883,6 +3296,14 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
           case "wifi":
             widget = createWifiWidget(data);
             break;
+          case "chart":
+            createChartWidget(data).then(w => {
+              if (w) {
+                chatContainer.appendChild(w);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+              }
+            });
+            return; // Return early since we handle append in the promise
         }
 
         if (widget) {

@@ -101,9 +101,15 @@ app.whenReady().then(async () => {
   preWarmOSD();
 
   // Register IPC handlers BEFORE creating menubar (which preloads window)
-  ipcMain.handle("chat", async (_event, prompt: string, sessionId?: number) => {
+  ipcMain.handle("chat", async (_event, prompt: string, sessionId?: number, attachment?: { path: string; name: string; type: string }) => {
     try {
       const sid = typeof sessionId === "number" && sessionId > 0 ? sessionId : getActiveChatSession().id;
+
+      // Store pending attachment for the service
+      if (attachment) {
+        copilotService.setPendingAttachment(attachment);
+      }
+
       const result = await copilotService.chat(prompt, sid);
       return { success: true, result };
     } catch (error) {
@@ -218,6 +224,17 @@ app.whenReady().then(async () => {
     } catch (error) {
       console.error("Screenshot error:", error);
       return { success: false, error: error instanceof Error ? error.message : "Screenshot failed" };
+    }
+  });
+
+  ipcMain.handle("select-document", async () => {
+    try {
+      const { selectAndPrepareDocument } = await import("./document-service.js");
+      const result = await selectAndPrepareDocument();
+      return result;
+    } catch (error) {
+      console.error("Document selection error:", error);
+      return { success: false, error: error instanceof Error ? error.message : "Selection failed" };
     }
   });
 
