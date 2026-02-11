@@ -313,15 +313,24 @@
         border-collapse: collapse;
         margin: 8px 0;
         font-size: 12px;
+        width: 100%;
+        display: block;
+        overflow-x: auto;
       }
 
       .message.assistant th,
       .message.assistant td {
         border: 1px solid var(--border-color);
         padding: 6px 10px;
+        white-space: nowrap;
       }
 
       .message.assistant th {
+        background: var(--bg-tertiary);
+        font-weight: 600;
+      }
+
+      .message.assistant tr:hover td {
         background: var(--bg-tertiary);
       }
 
@@ -384,9 +393,16 @@
         font-size: 13px;
       }
 
-      .input-area {
-        padding: 12px 16px;
+      .input-wrapper {
         border-top: 1px solid var(--border-color);
+        padding: 12px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .input-area {
         display: flex;
         gap: 8px;
         align-items: flex-end;
@@ -599,18 +615,20 @@
 
       /* Document attachment preview */
       .document-preview {
-        margin: 8px 0;
-        padding: 12px;
+        margin: 0;
+        padding: 8px 10px;
         background: var(--bg-secondary);
         border: 1px solid var(--border-color);
         border-radius: 8px;
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 8px;
+        max-width: 100%;
+        overflow: hidden;
       }
 
       .document-preview-icon {
-        font-size: 24px;
+        font-size: 18px;
         flex-shrink: 0;
       }
 
@@ -620,7 +638,7 @@
       }
 
       .document-preview-name {
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 500;
         white-space: nowrap;
         overflow: hidden;
@@ -628,7 +646,7 @@
       }
 
       .document-preview-meta {
-        font-size: 11px;
+        font-size: 10px;
         color: var(--text-secondary);
       }
 
@@ -1422,18 +1440,20 @@
       </div>
     </div>
 
-    <div class="input-area">
+    <div class="input-wrapper">
       <div class="attachment-area" id="attachmentArea" style="display: none;"></div>
-      <div class="input-stack">
-        <textarea
-          id="input"
-          placeholder="Ask Copilot... (try /help)"
-          rows="1"
-          autofocus
-        ></textarea>
-        <div class="command-hint" id="commandHint"></div>
+      <div class="input-area">
+        <div class="input-stack">
+          <textarea
+            id="input"
+            placeholder="Ask Copilot... (try /help)"
+            rows="1"
+            autofocus
+          ></textarea>
+          <div class="command-hint" id="commandHint"></div>
+        </div>
+        <button class="send-btn" id="sendBtn" disabled>Send</button>
       </div>
-      <button class="send-btn" id="sendBtn">Send</button>
     </div>
 
     <script>
@@ -1653,7 +1673,7 @@
         await loadChatHistory();
 
         input.disabled = false;
-        sendBtn.disabled = false;
+        updateSendBtn();
         input.focus();
       }
 
@@ -2138,7 +2158,7 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
 
       async function sendMessage() {
         const prompt = input.value.trim();
-        if (!prompt && !pendingDocument) return;
+        if (!prompt) return;
         if (isLoading) return;
 
         // Always hide slash command hint on send
@@ -2219,8 +2239,8 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
           streamingMessageId = null;
           streamedContent = "";
           isLoading = false;
-          sendBtn.disabled = false;
           sendBtn.textContent = "Send";
+          updateSendBtn();
           input.focus();
         }
       }
@@ -2251,11 +2271,18 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         }
       });
 
-      // Auto-resize textarea
+      // Auto-resize textarea + toggle send button
+      function updateSendBtn() {
+        if (!isLoading) {
+          sendBtn.disabled = !input.value.trim();
+        }
+      }
+
       input.addEventListener("input", () => {
         input.style.height = "auto";
         input.style.height = Math.min(input.scrollHeight, 120) + "px";
         updateCommandHint();
+        updateSendBtn();
       });
 
       // Hide hint when focus is lost
@@ -3246,8 +3273,8 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         // Widget is the response - clear loading state
         hideTypingIndicator();
         isLoading = false;
-        sendBtn.disabled = false;
         sendBtn.textContent = "Send";
+        updateSendBtn();
 
         let widget;
         switch (data.type) {
