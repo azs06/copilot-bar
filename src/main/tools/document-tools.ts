@@ -10,11 +10,6 @@ const attachDocumentTool = defineTool("attach_document", {
   parameters: {
     type: "object",
     properties: {
-      fileType: {
-        type: "string",
-        enum: ["pdf", "image", "text", "any"],
-        description: "Type of document to attach (or 'any' for no filter)",
-      },
       prompt: {
         type: "string",
         description: "Optional context about what to analyze in the document (e.g., 'summarize this report', 'extract key dates')",
@@ -22,7 +17,7 @@ const attachDocumentTool = defineTool("attach_document", {
     },
     required: [],
   },
-  handler: async ({ fileType = "any", prompt = "" }: { fileType?: string; prompt?: string }) => {
+  handler: async ({ prompt = "" }: { prompt?: string }) => {
     try {
       const result = await selectAndPrepareDocument();
 

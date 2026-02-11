@@ -1,5 +1,8 @@
 import { defineTool } from "@github/copilot-sdk";
+import { extname } from "node:path";
 import { parseDataFile, analyzeData } from "../data-parsing-service.js";
+
+const ALLOWED_DATA_EXTENSIONS = [".csv", ".xlsx", ".xls"];
 
 // Chart color palette - works for both dark and light themes
 const CHART_COLORS = [
@@ -32,6 +35,14 @@ const analyzeDataFileTool = defineTool("analyze_data_file", {
     required: ["file_path"],
   },
   handler: async ({ file_path }: { file_path: string }) => {
+    const ext = extname(file_path).toLowerCase();
+    if (!ALLOWED_DATA_EXTENSIONS.includes(ext)) {
+      return {
+        success: false,
+        error: `Unsupported file type: ${ext}. Allowed: ${ALLOWED_DATA_EXTENSIONS.join(", ")}`,
+      };
+    }
+
     const parseResult = await parseDataFile(file_path);
 
     if (!parseResult.success || !parseResult.data) {

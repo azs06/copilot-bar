@@ -1,7 +1,6 @@
 import { dialog } from "electron";
-import { readFile, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import { extname, basename } from "node:path";
-import { randomUUID } from "node:crypto";
 
 // Security: Allowed file types and size limits
 const ALLOWED_EXTENSIONS = [
@@ -16,19 +15,6 @@ const ALLOWED_EXTENSIONS = [
   ".csv",
   ".xlsx",
   ".xls",
-];
-
-const ALLOWED_MIME_TYPES = [
-  "application/pdf",
-  "image/png",
-  "image/jpeg",
-  "image/jpg",
-  "text/plain",
-  "text/markdown",
-  "application/json",
-  "text/csv",
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  "application/vnd.ms-excel",
 ];
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -155,23 +141,6 @@ export async function selectAndPrepareDocument(): Promise<{
       error: error?.message || "Failed to select document",
     };
   }
-}
-
-/**
- * Get document type icon for UI display
- */
-export function getDocumentIcon(type: "pdf" | "image" | "text"): string {
-  const icons = { pdf: "📄", image: "🖼️", text: "📝" };
-  return icons[type] || "📎";
-}
-
-/**
- * Format file size for display
- */
-export function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /**

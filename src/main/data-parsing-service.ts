@@ -103,10 +103,10 @@ async function parseExcelFile(filePath: string): Promise<{ success: boolean; dat
 
   const sheet = workbook.Sheets[sheetName];
 
-  // Convert to JSON with header row
+  // Convert to JSON with header row — raw: true preserves native types
   const jsonData = XLSX.utils.sheet_to_json<Record<string, string | number | boolean | null>>(sheet, {
     defval: null,
-    raw: false, // Get formatted values
+    raw: true,
   });
 
   if (jsonData.length === 0) {
@@ -115,32 +115,7 @@ async function parseExcelFile(filePath: string): Promise<{ success: boolean; dat
 
   // Extract headers from first row
   const headers = Object.keys(jsonData[0]);
-
-  // Convert string numbers to actual numbers where possible
-  const rows = jsonData.map((row: Record<string, string | number | boolean | null>) => {
-    const parsedRow: Record<string, string | number | boolean | null> = {};
-    for (const [key, value] of Object.entries(row)) {
-      if (value === null || value === undefined || value === "") {
-        parsedRow[key] = null;
-      } else if (typeof value === "string") {
-        // Try to parse as number
-        const num = Number(value);
-        if (!isNaN(num) && value.trim() !== "") {
-          parsedRow[key] = num;
-        } else if (value.toLowerCase() === "true") {
-          parsedRow[key] = true;
-        } else if (value.toLowerCase() === "false") {
-          parsedRow[key] = false;
-        } else {
-          parsedRow[key] = value;
-        }
-      } else {
-        // value is already number or boolean
-        parsedRow[key] = value as string | number | boolean | null;
-      }
-    }
-    return parsedRow;
-  });
+  const rows = jsonData;
 
   return {
     success: true,
@@ -204,12 +179,15 @@ function analyzeColumn(name: string, rows: Record<string, string | number | bool
 
   // Add numeric stats if applicable
   if (numericValues.length > 0) {
-    result.numericStats = {
-      min: Math.min(...numericValues),
-      max: Math.max(...numericValues),
-      mean: numericValues.reduce((a, b) => a + b, 0) / numericValues.length,
-      sum: numericValues.reduce((a, b) => a + b, 0),
-    };
+    let min = numericValues[0];
+    let max = numericValues[0];
+    let sum = 0;
+    for (const v of numericValues) {
+      if (v < min) min = v;
+      if (v > max) max = v;
+      sum += v;
+    }
+    result.numericStats = { min, max, mean: sum / numericValues.length, sum };
   }
 
   return result;

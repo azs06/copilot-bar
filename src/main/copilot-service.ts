@@ -12,19 +12,33 @@ export interface ToolEvent {
   toolCallId: string;
 }
 
-export interface WidgetEvent {
-  type: "timer" | "countdown" | "pomodoro" | "worldclock" | "unitconverter" | "wifi" | "chart";
+interface TimerWidgetEvent {
+  type: "timer" | "countdown" | "pomodoro";
   duration?: number;
   label?: string;
+}
+
+interface WorldClockWidgetEvent {
+  type: "worldclock";
   cities?: Array<{ name: string; timezone: string }>;
+}
+
+interface UnitConverterWidgetEvent {
+  type: "unitconverter";
   category?: string;
-  // WiFi widget properties
+}
+
+interface WifiWidgetEvent {
+  type: "wifi";
   enabled?: boolean;
   connected?: boolean;
   currentNetwork?: string | null;
   savedNetworks?: string[];
   error?: string;
-  // Chart widget properties
+}
+
+interface ChartWidgetEvent {
+  type: "chart";
   chartType?: "bar" | "horizontalBar" | "pie" | "doughnut" | "line" | "scatter" | "table";
   chartTitle?: string;
   chartLabels?: string[];
@@ -33,6 +47,13 @@ export interface WidgetEvent {
   yLabel?: string;
   scatterData?: Array<{ x: number; y: number }>;
 }
+
+export type WidgetEvent =
+  | TimerWidgetEvent
+  | WorldClockWidgetEvent
+  | UnitConverterWidgetEvent
+  | WifiWidgetEvent
+  | ChartWidgetEvent;
 
 export interface StreamDelta {
   messageId: string;
@@ -191,26 +212,7 @@ export class CopilotService {
           try {
             const result = JSON.parse(event.data.result.content);
             if (this.onWidgetEvent && result.widget) {
-              this.onWidgetEvent({
-                type: result.widget,
-                duration: result.duration,
-                label: result.label,
-                cities: result.cities,
-                category: result.category,
-                enabled: result.enabled,
-                connected: result.connected,
-                currentNetwork: result.currentNetwork ?? null,
-                savedNetworks: result.savedNetworks,
-                error: result.error,
-                // Chart widget properties
-                chartType: result.chartType,
-                chartTitle: result.chartTitle,
-                chartLabels: result.chartLabels,
-                chartDatasets: result.chartDatasets,
-                xLabel: result.xLabel,
-                yLabel: result.yLabel,
-                scatterData: result.scatterData,
-              });
+              this.onWidgetEvent({ ...result, type: result.widget } as WidgetEvent);
             }
             if (this.onScreenshotEvent && toolName === "capture_screenshot" && result.success) {
               if (result.path || result.url) {
@@ -244,23 +246,23 @@ export class CopilotService {
     this.currentModel = config.model;
     const session = await this.getOrCreateSession(sessionId, config.model);
 
-    // Build message options with optional screenshot attachment for vision
+    // Build message options with optional attachments (document + screenshot can coexist)
     const messageOptions: { prompt: string; attachments?: Array<{ type: "file"; path: string; displayName?: string }> } = { prompt };
+    const attachments: Array<{ type: "file"; path: string; displayName?: string }> = [];
 
-    // Check for pending document attachment first (takes priority over screenshots)
     if (this.pendingDocument) {
-      messageOptions.attachments = [this.pendingDocument];
+      attachments.push(this.pendingDocument);
       this.pendingDocument = null;
-    } else {
-      // Existing screenshot logic
-      const screenshotPath = getLastScreenshot();
-      if (screenshotPath) {
-        messageOptions.attachments = [
-          { type: "file", path: screenshotPath, displayName: "screenshot.png" }
-        ];
-        // Clear the screenshot after attaching so it's not sent repeatedly
-        clearLastScreenshot();
-      }
+    }
+
+    const screenshotPath = getLastScreenshot();
+    if (screenshotPath) {
+      attachments.push({ type: "file", path: screenshotPath, displayName: "screenshot.png" });
+      clearLastScreenshot();
+    }
+
+    if (attachments.length > 0) {
+      messageOptions.attachments = attachments;
     }
 
     console.log("[chat] sending prompt:", prompt.substring(0, 80));

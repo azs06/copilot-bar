@@ -2982,6 +2982,41 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         return widget;
       }
 
+      // Build a safe <table> from chart labels + datasets (no innerHTML with user data)
+      function buildChartTable(labels, datasets) {
+        const table = document.createElement("table");
+        table.className = "chart-table";
+
+        const thead = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        const labelTh = document.createElement("th");
+        labelTh.textContent = "Label";
+        headerRow.appendChild(labelTh);
+        for (const ds of datasets) {
+          const th = document.createElement("th");
+          th.textContent = ds.label;
+          headerRow.appendChild(th);
+        }
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        const tbody = document.createElement("tbody");
+        for (let i = 0; i < labels.length; i++) {
+          const row = document.createElement("tr");
+          const labelTd = document.createElement("td");
+          labelTd.textContent = labels[i];
+          row.appendChild(labelTd);
+          for (const ds of datasets) {
+            const td = document.createElement("td");
+            td.textContent = String(ds.data[i] ?? "");
+            row.appendChild(td);
+          }
+          tbody.appendChild(row);
+        }
+        table.appendChild(tbody);
+        return table;
+      }
+
       // Chart Widget
       async function createChartWidget(data) {
         const widget = document.createElement("div");
@@ -2995,28 +3030,12 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
           widget.appendChild(title);
         }
 
+        const labels = data.chartLabels || [];
+        const datasets = data.chartDatasets || [];
+
         // Handle table type separately (no Chart.js needed)
         if (data.chartType === "table") {
-          const table = document.createElement("table");
-          table.className = "chart-table";
-
-          // Header row
-          const thead = document.createElement("thead");
-          const headerRow = document.createElement("tr");
-          headerRow.innerHTML = `<th>Label</th>${(data.chartDatasets || []).map(ds => `<th>${ds.label}</th>`).join("")}`;
-          thead.appendChild(headerRow);
-          table.appendChild(thead);
-
-          // Data rows
-          const tbody = document.createElement("tbody");
-          (data.chartLabels || []).forEach((label, i) => {
-            const row = document.createElement("tr");
-            row.innerHTML = `<td>${label}</td>${(data.chartDatasets || []).map(ds => `<td>${ds.data[i]}</td>`).join("")}`;
-            tbody.appendChild(row);
-          });
-          table.appendChild(tbody);
-
-          widget.appendChild(table);
+          widget.appendChild(buildChartTable(labels, datasets));
           return widget;
         }
 
@@ -3027,26 +3046,8 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
           // Fallback to table if Chart.js unavailable
           const fallback = document.createElement("div");
           fallback.className = "chart-widget-fallback";
-          fallback.innerHTML = `<p>Chart rendering unavailable. Showing data as table:</p>`;
-
-          const table = document.createElement("table");
-          table.className = "chart-table";
-
-          const thead = document.createElement("thead");
-          const headerRow = document.createElement("tr");
-          headerRow.innerHTML = `<th>Label</th>${(data.chartDatasets || []).map(ds => `<th>${ds.label}</th>`).join("")}`;
-          thead.appendChild(headerRow);
-          table.appendChild(thead);
-
-          const tbody = document.createElement("tbody");
-          (data.chartLabels || []).forEach((label, i) => {
-            const row = document.createElement("tr");
-            row.innerHTML = `<td>${label}</td>${(data.chartDatasets || []).map(ds => `<td>${ds.data[i]}</td>`).join("")}`;
-            tbody.appendChild(row);
-          });
-          table.appendChild(tbody);
-
-          fallback.appendChild(table);
+          fallback.textContent = "Chart rendering unavailable. Showing data as table:";
+          fallback.appendChild(buildChartTable(labels, datasets));
           widget.appendChild(fallback);
           return widget;
         }
@@ -3150,7 +3151,10 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
           new chartLib(canvas.getContext("2d"), chartConfig);
         } catch (e) {
           console.error("[Chart] Failed to create chart:", e);
-          widget.innerHTML = `<div class="chart-widget-fallback">Failed to render chart: ${e.message}</div>`;
+          const errDiv = document.createElement("div");
+          errDiv.className = "chart-widget-fallback";
+          errDiv.textContent = `Failed to render chart: ${e.message}`;
+          widget.replaceChildren(errDiv);
         }
 
         return widget;
