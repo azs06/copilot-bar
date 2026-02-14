@@ -2,6 +2,8 @@
 
 A macOS menu bar app powered by GitHub Copilot SDK. Chat with AI and control your computer from the menu bar.
 
+![Copilot Bar Product Image](screenshots/product-image.png)
+
 By default it uses gpt-5-mini, the shared history is intentionally disabled. This is a hobby project.
 
 Todos:
@@ -130,6 +132,10 @@ Access settings via the gear button in the app to configure:
 "Show me a bar chart"        "Plot this data as a pie chart"
 "Visualize sales by month"   "Make a scatter plot"
 ```
+
+## Product Usage
+
+![Copilot Bar Usage Example](screenshots/timer-example.png)
 
 ## Custom Tools
 
