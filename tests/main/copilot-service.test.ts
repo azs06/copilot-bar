@@ -22,7 +22,7 @@ vi.mock("@github/copilot-sdk", () => ({
   })),
 }));
 
-vi.mock("./database.js", () => ({
+vi.mock("../../src/main/database.js", () => ({
   loadConfig: vi.fn(() => ({
     model: "gpt-5-mini",
     shortcut: "CommandOrControl+Shift+T",
@@ -30,18 +30,18 @@ vi.mock("./database.js", () => ({
   })),
 }));
 
-vi.mock("./tools/index.js", () => ({
+vi.mock("../../src/main/tools/index.js", () => ({
   allTools: [],
 }));
 
-vi.mock("./tools/helpers.js", () => ({
+vi.mock("../../src/main/tools/helpers.js", () => ({
   getLastScreenshot: vi.fn(() => null),
   clearLastScreenshot: vi.fn(),
 }));
 
-import { CopilotService } from "./copilot-service.js";
-import { loadConfig } from "./database.js";
-import { getLastScreenshot, clearLastScreenshot } from "./tools/helpers.js";
+import { CopilotService } from "../../src/main/copilot-service.js";
+import { loadConfig } from "../../src/main/database.js";
+import { getLastScreenshot, clearLastScreenshot } from "../../src/main/tools/helpers.js";
 
 let service: CopilotService;
 

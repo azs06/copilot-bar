@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("./helpers.js", () => ({
+vi.mock("../../../src/main/tools/helpers.js", () => ({
   execAsync: vi.fn(),
   execFileAsync: vi.fn(),
 }));
@@ -17,13 +17,13 @@ vi.mock("node:child_process", () => ({
   spawn: vi.fn(() => mockProc),
 }));
 
-import { systemTools } from "./system-tools.js";
-import { execAsync, execFileAsync } from "./helpers.js";
+import { systemTools } from "../../../src/main/tools/system-tools.js";
+import { execAsync, execFileAsync } from "../../../src/main/tools/helpers.js";
 
 function findTool(name: string) {
   const tool = systemTools.find((t: any) => t.name === name);
   if (!tool) throw new Error(`Tool "${name}" not found`);
-  return tool;
+  return tool as unknown as { handler: (args: any) => Promise<any> };
 }
 
 describe("run_shell_command", () => {

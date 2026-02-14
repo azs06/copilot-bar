@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock helpers
-vi.mock("./helpers.js", () => ({
+vi.mock("../../../src/main/tools/helpers.js", () => ({
   scheduleReminder: vi.fn(() => ({
     id: "reminder_123_abc",
     triggerAt: new Date("2025-01-01T01:05:00Z"),
@@ -13,19 +13,19 @@ vi.mock("./helpers.js", () => ({
 }));
 
 // Mock screenshot-service
-vi.mock("../screenshot-service.js", () => ({
+vi.mock("../../../src/main/screenshot-service.js", () => ({
   captureAndUpload: vi.fn(),
   isS3Configured: vi.fn(() => false),
 }));
 
-import { widgetTools } from "./widget-tools.js";
-import { scheduleReminder, listReminders, cancelReminder, setLastScreenshot } from "./helpers.js";
-import { captureAndUpload } from "../screenshot-service.js";
+import { widgetTools } from "../../../src/main/tools/widget-tools.js";
+import { scheduleReminder, listReminders, cancelReminder, setLastScreenshot } from "../../../src/main/tools/helpers.js";
+import { captureAndUpload } from "../../../src/main/screenshot-service.js";
 
 function findTool(name: string) {
   const tool = widgetTools.find((t: any) => t.name === name);
   if (!tool) throw new Error(`Tool "${name}" not found`);
-  return tool;
+  return tool as unknown as { handler: (args: any) => Promise<any> };
 }
 
 describe("start_timer", () => {

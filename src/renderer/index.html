@@ -75,6 +75,16 @@
         gap: 8px;
       }
 
+      body.desktop-mode .header {
+        padding-left: 78px;
+        -webkit-app-region: drag;
+      }
+
+      body.desktop-mode .header button,
+      body.desktop-mode .header input {
+        -webkit-app-region: no-drag;
+      }
+
       .header-row {
         display: flex;
         align-items: center;
@@ -1414,6 +1424,8 @@
           <button class="config-btn" id="documentBtn" title="Attach document">📎</button>
           <button class="config-btn" id="clearBtn" title="Clear chat">🗑️</button>
           <button class="config-btn" id="configBtn" title="Settings">⚙️</button>
+          <button class="config-btn" id="desktopBtn" title="Open in desktop window">⛶</button>
+          <button class="config-btn" id="closeAppBtn" style="display:none" title="Quit app">✕</button>
           <button class="config-btn" id="quitBtn" title="Quit app">✕</button>
         </div>
       </div>
@@ -2125,6 +2137,9 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         return true;
       }
 
+      // --- Cross-window sync ---
+      let localPromptJustSent = null;
+
       // --- Streaming state ---
       let streamingBubble = null;
       let streamingMessageId = null;
@@ -2203,6 +2218,7 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         }
 
         try {
+          localPromptJustSent = messageData.prompt;
           const result = await ipcRenderer.invoke("chat", messageData.prompt, activeSession.id || undefined, messageData.attachment);
           hideTypingIndicator();
 
@@ -2457,10 +2473,41 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
         input.focus();
       });
 
-      // Quit app
-      quitBtn.addEventListener("click", () => {
-        ipcRenderer.invoke("quit-app");
-      });
+      // Desktop mode detection + quit/desktop button behavior
+      const desktopBtn = document.getElementById("desktopBtn");
+      const isDesktopMode = new URLSearchParams(window.location.search).get("mode") === "desktop";
+
+      const closeAppBtn = document.getElementById("closeAppBtn");
+
+      if (isDesktopMode) {
+        document.body.classList.add("desktop-mode");
+        desktopBtn.style.display = "none";
+        quitBtn.textContent = "⎽";
+        quitBtn.title = "Minimize to menubar";
+        document.querySelector(".header-title h1").lastChild.textContent = " Copilot Window";
+        quitBtn.addEventListener("click", () => {
+          window.close();
+        });
+        // Show close button in desktop mode
+        closeAppBtn.style.display = "";
+        closeAppBtn.addEventListener("click", () => {
+          ipcRenderer.invoke("quit-app");
+        });
+      } else {
+        quitBtn.addEventListener("click", () => {
+          ipcRenderer.invoke("quit-app");
+        });
+        desktopBtn.addEventListener("click", async () => {
+          try {
+            const result = await ipcRenderer.invoke("open-desktop-window");
+            if (!result.success) {
+              addMessage(`Failed to open desktop window: ${result.error}`, "error");
+            }
+          } catch (err) {
+            addMessage(`Desktop window error: ${err.message || "Unknown error"}`, "error");
+          }
+        });
+      }
 
       // Screenshot capture
       screenshotBtn.addEventListener("click", async () => {
@@ -2551,6 +2598,17 @@ Copilot Bar is a menu bar chat app that can **chat**, **run tools**, and **show 
 
       // Make clearAttachment available globally
       window.clearAttachment = clearAttachment;
+
+      // Listen for user messages broadcast from main (cross-window sync)
+      ipcRenderer.on("user-message", (_event, { prompt }) => {
+        // Skip if this window just sent this message (already rendered locally)
+        if (localPromptJustSent === prompt) {
+          localPromptJustSent = null;
+          return;
+        }
+        addMessage(prompt, "user", false);
+        showTypingIndicator();
+      });
 
       // Listen for tool events from main process
       ipcRenderer.on("tool-event", (event, data) => {

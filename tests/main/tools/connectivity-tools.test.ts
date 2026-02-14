@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("./helpers.js", () => ({
+vi.mock("../../../src/main/tools/helpers.js", () => ({
   execAsync: vi.fn(),
   execFileAsync: vi.fn(),
 }));
@@ -10,19 +10,19 @@ const mockBluetooth = {
   setEnabled: vi.fn(),
 };
 
-vi.mock("./native-apis.js", () => ({
+vi.mock("../../../src/main/tools/native-apis.js", () => ({
   getNativeApis: vi.fn(() => ({
     bluetooth: mockBluetooth,
   })),
 }));
 
-import { connectivityTools } from "./connectivity-tools.js";
-import { execAsync, execFileAsync } from "./helpers.js";
+import { connectivityTools } from "../../../src/main/tools/connectivity-tools.js";
+import { execAsync, execFileAsync } from "../../../src/main/tools/helpers.js";
 
 function findTool(name: string) {
   const tool = connectivityTools.find((t: any) => t.name === name);
   if (!tool) throw new Error(`Tool "${name}" not found`);
-  return tool;
+  return tool as unknown as { handler: (args: any) => Promise<any> };
 }
 
 describe("get_wifi_status", () => {

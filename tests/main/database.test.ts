@@ -38,7 +38,7 @@ import {
   getActiveChatSession,
   setActiveChatSession,
   closeDb,
-} from "./database.js";
+} from "../../src/main/database.js";
 
 beforeAll(async () => {
   await initDb();

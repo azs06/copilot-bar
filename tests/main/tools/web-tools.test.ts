@@ -1,19 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("./helpers.js", () => ({
+vi.mock("../../../src/main/tools/helpers.js", () => ({
   execAsync: vi.fn(),
   execFileAsync: vi.fn(),
   writeFileAsync: vi.fn(),
   unlinkAsync: vi.fn(),
 }));
 
-import { webTools } from "./web-tools.js";
-import { execFileAsync, writeFileAsync, unlinkAsync } from "./helpers.js";
+import { webTools } from "../../../src/main/tools/web-tools.js";
+import { execFileAsync, writeFileAsync, unlinkAsync } from "../../../src/main/tools/helpers.js";
 
 function findTool(name: string) {
   const tool = webTools.find((t: any) => t.name === name);
   if (!tool) throw new Error(`Tool "${name}" not found`);
-  return tool;
+  return tool as unknown as { handler: (args: any) => Promise<any> };
 }
 
 describe("summarize_url", () => {
@@ -88,14 +88,14 @@ describe("get_weather", () => {
 
 describe("analyze_image", () => {
   it("parses dimensions from sips output", async () => {
-    vi.mocked(execFileAsync).mockImplementation(async (cmd: any, ..._args: any[]) => {
+    (vi.mocked(execFileAsync).mockImplementation as any)(async (cmd: any, ..._args: any[]) => {
       if (cmd === "mdls") {
-        return { stdout: 'kMDItemFSSize = 1048576\nkMDItemContentType = "public.png"\nkMDItemFSCreationDate = 2025-01-01', stderr: "" } as any;
+        return { stdout: 'kMDItemFSSize = 1048576\nkMDItemContentType = "public.png"\nkMDItemFSCreationDate = 2025-01-01', stderr: "" };
       }
       if (cmd === "sips") {
-        return { stdout: "pixelWidth: 1920\npixelHeight: 1080\n", stderr: "" } as any;
+        return { stdout: "pixelWidth: 1920\npixelHeight: 1080\n", stderr: "" };
       }
-      return { stdout: "", stderr: "" } as any;
+      return { stdout: "", stderr: "" };
     });
     const result = await findTool("analyze_image").handler({ path: "/tmp/test.png" });
     expect(result.success).toBe(true);
@@ -105,9 +105,9 @@ describe("analyze_image", () => {
   });
 
   it("handles missing sips data", async () => {
-    vi.mocked(execFileAsync).mockImplementation(async (cmd: any, ..._args: any[]) => {
+    (vi.mocked(execFileAsync).mockImplementation as any)(async (cmd: any, ..._args: any[]) => {
       if (cmd === "mdls") {
-        return { stdout: "kMDItemFSSize = 2048", stderr: "" } as any;
+        return { stdout: "kMDItemFSSize = 2048", stderr: "" };
       }
       throw new Error("sips failed");
     });

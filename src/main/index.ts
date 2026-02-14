@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { app, ipcMain, shell, nativeImage, globalShortcut } from "electron";
+import { app, ipcMain, shell, nativeImage, globalShortcut, dialog } from "electron";
 import { menubar } from "menubar";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -25,6 +25,7 @@ import {
 import { captureAndUpload } from "./screenshot-service.js";
 import { getNativeApis } from "./tools/native-apis.js";
 import { preWarmOSD } from "./osd-window.js";
+import { getOrCreateDesktopWindow, getDesktopWindow } from "./desktop-window.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -104,6 +105,9 @@ app.whenReady().then(async () => {
   ipcMain.handle("chat", async (_event, prompt: string, sessionId?: number, attachment?: { path: string; name: string; type: string }) => {
     try {
       const sid = typeof sessionId === "number" && sessionId > 0 ? sessionId : getActiveChatSession().id;
+
+      // Broadcast user message to all windows for sync
+      broadcastToWindows("user-message", { prompt, sessionId: sid });
 
       // Store pending attachment for the service
       if (attachment) {
@@ -214,8 +218,45 @@ app.whenReady().then(async () => {
     }
   });
 
-  ipcMain.handle("quit-app", () => {
-    app.quit();
+  let quitConfirmed = false;
+
+  ipcMain.handle("quit-app", async () => {
+    const { response } = await dialog.showMessageBox({
+      type: "question",
+      buttons: ["Quit", "Cancel"],
+      defaultId: 1,
+      title: "Quit Copilot Bar",
+      message: "Are you sure you want to quit Copilot Bar?",
+    });
+    if (response === 0) {
+      quitConfirmed = true;
+      app.quit();
+    }
+  });
+
+  app.on("before-quit", async (e) => {
+    if (quitConfirmed) return;
+    e.preventDefault();
+    const { response } = await dialog.showMessageBox({
+      type: "question",
+      buttons: ["Quit", "Cancel"],
+      defaultId: 1,
+      title: "Quit Copilot Bar",
+      message: "Are you sure you want to quit Copilot Bar?",
+    });
+    if (response === 0) {
+      quitConfirmed = true;
+      app.quit();
+    }
+  });
+
+  ipcMain.handle("open-desktop-window", () => {
+    try {
+      const win = getOrCreateDesktopWindow();
+      return { success: true, windowId: win.id };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : "Failed to open desktop window" };
+    }
   });
 
   ipcMain.handle("capture-screenshot", async () => {
@@ -264,6 +305,21 @@ app.whenReady().then(async () => {
     return { success: true };
   });
 
+  // Helper to broadcast events to both menubar and desktop windows
+  const broadcastToWindows = (channel: string, data: unknown): void => {
+    try {
+      if (mb.window && !mb.window.isDestroyed() && !mb.window.webContents.isDestroyed()) {
+        mb.window.webContents.send(channel, data);
+      }
+    } catch (_) { /* window closing */ }
+    try {
+      const desktopWin = getDesktopWindow();
+      if (desktopWin && !desktopWin.webContents.isDestroyed()) {
+        desktopWin.webContents.send(channel, data);
+      }
+    } catch (_) { /* window closing */ }
+  };
+
   mb.on("ready", () => {
     console.log("Copilot Bar is ready");
 
@@ -273,37 +329,27 @@ app.whenReady().then(async () => {
 
     // Set up tool event handler to notify renderer
     copilotService.setToolEventHandler((event) => {
-      if (mb.window) {
-        mb.window.webContents.send("tool-event", event);
-      }
+      broadcastToWindows("tool-event", event);
     });
 
     // Set up widget event handler to render widgets in chat
     copilotService.setWidgetEventHandler((event) => {
-      if (mb.window) {
-        mb.window.webContents.send("render-widget", event);
-      }
+      broadcastToWindows("render-widget", event);
     });
 
     // Set up streaming delta handler for progressive response rendering
     copilotService.setStreamHandler((delta) => {
-      if (mb.window) {
-        mb.window.webContents.send("chat-delta", delta);
-      }
+      broadcastToWindows("chat-delta", delta);
     });
 
     // Set up screenshot event handler to render screenshots inline in chat
     copilotService.setScreenshotEventHandler((event) => {
-      if (mb.window) {
-        mb.window.webContents.send("screenshot-captured", event);
-      }
+      broadcastToWindows("screenshot-captured", event);
     });
 
     // Forward actual model usage info to renderer for badge verification
     copilotService.setModelUsageHandler((event) => {
-      if (mb.window) {
-        mb.window.webContents.send("model-usage", event);
-      }
+      broadcastToWindows("model-usage", event);
     });
   });
 

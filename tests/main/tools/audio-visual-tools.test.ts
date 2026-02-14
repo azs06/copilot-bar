@@ -12,23 +12,23 @@ const mockBrightness = {
   set: vi.fn(),
 };
 
-vi.mock("./native-apis.js", () => ({
+vi.mock("../../../src/main/tools/native-apis.js", () => ({
   getNativeApis: vi.fn(() => ({
     volume: mockVolume,
     brightness: mockBrightness,
   })),
 }));
 
-vi.mock("../osd-window.js", () => ({
+vi.mock("../../../src/main/osd-window.js", () => ({
   showOSD: vi.fn(),
 }));
 
-import { audioVisualTools } from "./audio-visual-tools.js";
+import { audioVisualTools } from "../../../src/main/tools/audio-visual-tools.js";
 
 function findTool(name: string) {
   const tool = audioVisualTools.find((t: any) => t.name === name);
   if (!tool) throw new Error(`Tool "${name}" not found`);
-  return tool;
+  return tool as unknown as { handler: (args: any) => Promise<any> };
 }
 
 describe("set_volume", () => {
