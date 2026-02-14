@@ -29,7 +29,7 @@ import {
   setLastScreenshot,
   getLastScreenshot,
   clearLastScreenshot,
-} from "./helpers.js";
+} from "../../../src/main/tools/helpers.js";
 
 describe("escapeAppleScriptString", () => {
   it("escapes backslashes", () => {

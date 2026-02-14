@@ -1,23 +1,23 @@
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("./helpers.js", () => ({
+vi.mock("../../../src/main/tools/helpers.js", () => ({
   runAppleScript: vi.fn(),
   escapeAppleScriptString: vi.fn((s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')),
 }));
 
-vi.mock("./native-apis.js", () => ({
+vi.mock("../../../src/main/tools/native-apis.js", () => ({
   getNativeApis: vi.fn(() => ({
     screen: { getWidth: vi.fn(() => 1920), getHeight: vi.fn(() => 1080) },
   })),
 }));
 
-import { windowTools } from "./window-tools.js";
-import { runAppleScript } from "./helpers.js";
+import { windowTools } from "../../../src/main/tools/window-tools.js";
+import { runAppleScript } from "../../../src/main/tools/helpers.js";
 
 function findTool(name: string) {
   const tool = windowTools.find((t: any) => t.name === name);
   if (!tool) throw new Error(`Tool "${name}" not found`);
-  return tool;
+  return tool as unknown as { handler: (args: any) => Promise<any> };
 }
 
 describe("list_windows", () => {

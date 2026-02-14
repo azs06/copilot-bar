@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
 // Mock the database module
-vi.mock("../database.js", () => ({
+vi.mock("../../../src/main/database.js", () => ({
   createNote: vi.fn(() => 1),
   updateNote: vi.fn(() => true),
   getNote: vi.fn(() => null),
@@ -17,13 +17,13 @@ vi.mock("../database.js", () => ({
   deleteTodo: vi.fn(),
 }));
 
-import { dataTools } from "./data-tools.js";
-import { createNote, getNote, listNotes, searchNotes, countNotes, createTodo, getTodo, listTodos, completeTodo } from "../database.js";
+import { dataTools } from "../../../src/main/tools/data-tools.js";
+import { createNote, getNote, listNotes, searchNotes, countNotes, createTodo, getTodo, listTodos, completeTodo } from "../../../src/main/database.js";
 
 function findTool(name: string) {
   const tool = dataTools.find((t: any) => t.name === name);
   if (!tool) throw new Error(`Tool "${name}" not found`);
-  return tool;
+  return tool as unknown as { handler: (args: any) => Promise<any> };
 }
 
 describe("create_note", () => {

@@ -1,17 +1,17 @@
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("./helpers.js", () => ({
+vi.mock("../../../src/main/tools/helpers.js", () => ({
   runAppleScript: vi.fn(),
   execFileAsync: vi.fn(),
 }));
 
-import { mediaTools } from "./media-tools.js";
-import { runAppleScript, execFileAsync } from "./helpers.js";
+import { mediaTools } from "../../../src/main/tools/media-tools.js";
+import { runAppleScript, execFileAsync } from "../../../src/main/tools/helpers.js";
 
 function findTool(name: string) {
   const tool = mediaTools.find((t: any) => t.name === name);
   if (!tool) throw new Error(`Tool "${name}" not found`);
-  return tool;
+  return tool as unknown as { handler: (args: any) => Promise<any> };
 }
 
 describe("play_music", () => {
