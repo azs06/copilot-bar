@@ -73,6 +73,14 @@ export function getOrCreateDesktopWindow(): BrowserWindow {
     desktopWindow?.focus();
   });
 
+  // When the desktop window becomes visible again after being hidden,
+  // tell the renderer to reload chat from DB (it missed IPC events while hidden)
+  desktopWindow.on("show", () => {
+    if (desktopWindow && !desktopWindow.isDestroyed() && !desktopWindow.webContents.isDestroyed()) {
+      desktopWindow.webContents.send("reload-chat");
+    }
+  });
+
   // Intercept close: hide instead of destroy to return to menubar mode
   desktopWindow.on("close", (event) => {
     if (!isQuitting && desktopWindow && !desktopWindow.isDestroyed()) {

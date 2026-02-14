@@ -276,9 +276,11 @@ export class CopilotService {
       return response?.data.content || "";
     } catch (error: any) {
       console.error("[chat] sendAndWait failed:", error.message);
-      // Session may be dead — evict and delete so it doesn't linger in Copilot history
+      // Evict the session so the next message creates a fresh one.
+      // Only destroy locally — skip the remote deleteSession() call to avoid
+      // blocking the error path with a slow network request.
       this.sessions.delete(sessionId);
-      await this.destroyAndDelete(session);
+      try { await session.destroy(); } catch {}
       throw error;
     }
   }

@@ -305,16 +305,17 @@ app.whenReady().then(async () => {
     return { success: true };
   });
 
-  // Helper to broadcast events to both menubar and desktop windows
+  // Helper to broadcast events to visible windows only.
+  // Hidden windows skip IPC entirely and reload from DB when shown again.
   const broadcastToWindows = (channel: string, data: unknown): void => {
     try {
-      if (mb.window && !mb.window.isDestroyed() && !mb.window.webContents.isDestroyed()) {
+      if (mb.window && !mb.window.isDestroyed() && mb.window.isVisible() && !mb.window.webContents.isDestroyed()) {
         mb.window.webContents.send(channel, data);
       }
     } catch (_) { /* window closing */ }
     try {
       const desktopWin = getDesktopWindow();
-      if (desktopWin && !desktopWin.webContents.isDestroyed()) {
+      if (desktopWin && desktopWin.isVisible() && !desktopWin.webContents.isDestroyed()) {
         desktopWin.webContents.send(channel, data);
       }
     } catch (_) { /* window closing */ }
@@ -351,6 +352,15 @@ app.whenReady().then(async () => {
     copilotService.setModelUsageHandler((event) => {
       broadcastToWindows("model-usage", event);
     });
+  });
+
+  // Reload chat in menubar window when it's shown (it may have missed events while hidden)
+  mb.on("after-show", () => {
+    try {
+      if (mb.window && !mb.window.isDestroyed() && !mb.window.webContents.isDestroyed()) {
+        mb.window.webContents.send("reload-chat");
+      }
+    } catch (_) { /* window closing */ }
   });
 
   // Cleanup on quit
