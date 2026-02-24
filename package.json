@@ -8,8 +8,30 @@
     "copy-html": "mkdir -p dist/renderer && cp src/renderer/index.html src/renderer/osd.html dist/renderer/ && cp -r assets dist/",
     "start": "npm run build && electron .",
     "dev": "npm run build && electron .",
+    "package-mac": "electron-builder --mac",
     "test": "vitest run",
     "test:watch": "vitest"
+  },
+  "build": {
+    "appId": "com.github.copilotbar",
+    "productName": "Copilot Bar",
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        }
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*",
+      "package.json"
+    ]
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.975.0",
@@ -30,6 +52,7 @@
     "@types/papaparse": "^5.3.14",
     "@types/sql.js": "^1.4.9",
     "@vitest/coverage-v8": "^3.2.4",
+    "electron-builder": "^25.1.8",
     "typescript": "^5.0.0",
     "vitest": "^3.2.4"
   }
